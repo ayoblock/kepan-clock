@@ -1,0 +1,15 @@
+# 构建产物
+pkgroot/
+*.deb
+*.buildinfo
+*.changes
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 编辑器与系统杂物
+.vscode/
+.idea/
+*.swp
+.DS_Store

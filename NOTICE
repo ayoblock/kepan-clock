@@ -1,0 +1,23 @@
+刻盘钟 · 司辰（kepan-clock）
+Copyright (c) 2026 ayoblock
+
+本仓库的源代码以 MIT 许可发布，全文见 LICENSE。以下内容不属于 MIT 的覆盖范围，
+列出以正视听。
+
+一、报时声样 sounds/  —— CC BY-SA 3.0
+    bell.wav  「Gong or bell vibrant (short)」：CC0 1.0 公有领域贡献，来源维基共享资源
+    drum.wav  「Bass drum」：CC BY-SA 3.0，作者 Clngre，来源维基共享资源
+
+    该目录下的音频素材保留其原有许可，不受本仓库 MIT 许可影响。
+    再分发 drum.wav 时须保留「Bass drum by Clngre, CC BY-SA 3.0」之署名，
+    并继续以 CC BY-SA 3.0 提供该音频文件。
+    许可全文：https://creativecommons.org/licenses/by-sa/3.0/
+
+二、字体  —— 未随仓库分发
+    程序只按字体名引用系统已安装的字体，仓库内不含任何字体文件。
+    默认首选「字魂游龙篆书」为商业试用字体，商用须另行取得授权；
+    开源替代为「霞鹜篆书 LXGW Seal」（SIL OFL 1.1）。
+    安装与使用字体所涉授权责任，由使用者自行承担。
+
+三、盘面预览图 预览-*.png
+    由本程序离屏渲染生成，与代码同以 MIT 发布。

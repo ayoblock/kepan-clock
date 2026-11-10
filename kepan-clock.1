@@ -1,0 +1,67 @@
+.TH KEPAN-CLOCK 1 "2026年11月" "kepan-clock 1.4.0" "用户命令"
+.SH NAME
+kepan-clock \- 刻盘钟·司辰，十二时辰盘钟
+.SH SYNOPSIS
+.B kepan-clock
+.RI [ --day | --night | --wallpaper ]
+.br
+.B kepan-clock --png
+.I OUT.png
+.RB [ --hhmm " HH:MM] [" --date " YYYY-MM-DD] [" --size " WxH] [" --popup " three|month] [" --wallpaper "] [" --day | --night ]
+.SH DESCRIPTION
+以天度为盘、以晷影为针的十二时辰桌面钟。主盘三重刻度：一辰三十度，
+初正十五度，九十六刻；晷针一日一夜一周，合二十四时制。八刻副盘一辰一周，
+盘心生肖篆字随辰轮换。更牌窗定五更二十五点，依日出日落与昏旦偏移。
+昼墨夜金双盘，随日出日落三十秒渐变切换；星空依恒星日缓转。
+.PP
+悬停主盘可「试时」：牌窗即时显示悬停角位的辰初正刻读数。
+面板另示真太阳时读数与一行历注（年干支、农历月日、日干支、候）。
+点按历注弹出气泡：一级昨今明三日条，二级整月历（朔日与节气朱标），
+Esc 或点气泡外收起。右列背景水印为当前时辰生肖剪影，随辰换兽。
+报时声默认关闭。
+.SH OPTIONS
+.TP
+.B \-\-day
+锁定昼盘。
+.TP
+.B \-\-night
+锁定夜盘。
+.TP
+.B \-\-wallpaper
+壁画模式：全屏无饰置底窗，大盘居中、四角竖题、底部一行读数；
+平稳时六秒一换，昼夜渐变期十帧；按 Esc 退出。
+.TP
+.B \-\-png " " \fIOUT.png\fR
+离屏渲染一张盘面存为 PNG 后退出（自检用）。
+.TP
+.B \-\-hhmm " " \fIHH:MM\fR
+配合 \-\-png，指定渲染时刻。
+.TP
+.B \-\-date " " \fIYYYY-MM-DD\fR
+配合 \-\-png，指定渲染日期（历注与气泡自检用）。
+.TP
+.B \-\-size " " \fIWxH\fR
+配合 \-\-png，指定画幅（默认 960x680）。
+.TP
+.B \-\-popup " " \fIthree|month\fR
+配合 \-\-png，渲染历注气泡的对应一级／二级状态。
+.TP
+.B \-\-hover " " \fIX,Y\fR
+配合 \-\-png，模拟悬停点位（试时自检）。
+.TP
+.B \-\-sound\-test
+立即播钟三下并打印声样全链路诊断。
+.SH FILES
+.TP
+.I ~/.config/kepan-clock/config.toml
+用户配置（经纬度、昏旦偏移、主题、字体链、水印、报时声）。保存后约半秒热重载。
+.TP
+.I /usr/share/kepan-clock/config.toml
+默认配置。
+.SH DIAGNOSTICS
+篆体未生效时启动会向标准错误打印警告。自校：
+.B /usr/bin/python3 /usr/share/kepan-clock/chen_core.py
+.BR sun.py 、
+.BR lunar.py 。
+.SH AUTHORS
+刻盘钟匠系（本机自用）。篆体字体自备，授权自担。
