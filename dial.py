@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""刻盘钟·盘面渲染（1.1.0）
+"""刻盘钟·盘面渲染（1.5.0）
 主盘：辰字环（楷）＋初正环＋九十六刻环＋素环（星空三等、银河弱带、四象瓦当
 线描）＋晷针（昼影夜晕）。副盘：八刻盘，刻针一辰一周，盘心生肖篆字。
-面板：读数、更牌窗（翻牌动画、试时显示）、节气、对时、真太阳时、朱印、名例。
+面板：读数、更牌窗（翻牌动画、试时显示）、节气、对时、真太阳时、朱印、名例、
+八刻副盘，右下「天行」字印为设置入口（设置牌窗：昼夜/剪影/淡度/辰字/壁纸）。
 性能：静态层（环、字、刻线、四象、晕影）入 ImageSurface 缓存，逐秒只绘
 星空与晷针；昼夜渐变期间（blend∈(0,1)）绕过缓存全量重绘。
 """
 import math
 import random
+import time
 
 import cairo
 import gi
@@ -878,7 +880,8 @@ def _watermark(ctx, cx, bottom, radius, st, pal, fonts, kind, alpha=0.16,
     ctx.paint_with_alpha(max(0.02, min(0.45, alpha)))
 
 
-def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16):
+def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16,
+           seal_pos=None):
     """右列自上而下：读数、更牌窗（翻牌/试时）、节气、对时、真太阳时、
     历注（可点）、朱印、名例、八刻副盘。全列居中锚定，随 k 等比缩放。"""
     chen_f, seal = fonts["chen"], fonts["seal"]
@@ -963,6 +966,24 @@ def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16):
     r = side_r
     _dial_side(ctx, cx, y + _SIDE_Y * k, r, st, pal, fonts)
 
+    # 天行字印（设置入口）：常时朱线空印，悬停/展开时实印
+    if seal_pos is not None:
+        lit = bool(st.get("seal_hover")) or st.get("popup") == "settings"
+        scx, scy = seal_pos
+        sw, sh = 24.0 * k, 22.0 * k
+        _round_rect(ctx, scx - sw / 2.0, scy - sh / 2.0, sw, sh, 3.5 * k)
+        if lit:
+            ctx.set_source_rgb(*pal["cinnabar"])
+            ctx.fill()
+            tcol = pal["bg"]
+        else:
+            ctx.set_source_rgb(*pal["cinnabar"])
+            ctx.set_line_width(1.1 * k)
+            ctx.stroke()
+            tcol = pal["cinnabar"]
+        _text(ctx, scx, scy - 5.2 * k, "天", 8.2 * k, fonts["seal"], tcol)
+        _text(ctx, scx, scy + 5.6 * k, "行", 8.2 * k, fonts["seal"], tcol)
+
 
 # ---------------------------------------------------------------- 历注气泡
 _ALM_CACHE = {}
@@ -997,7 +1018,10 @@ def _layout(w, h):
     px = cx + R + 28.0
     py0 = max(30.0, (h - _PANEL_H * k) / 2.0)
     ny = py0 + _NOTE_Y * k
+    scx = px + pw / 2.0
+    scy = min(py0 + _PANEL_H * k + 16.0 * k, h - 11.0)   # 天行字印心
     return dict(R=R, pw=pw, k=k, cx=cx, cy=cy, px=px, py0=py0, note_y=ny,
+                seal=(scx, scy),
                 note_rect=(px + 4.0 * k, ny - 12.0 * k, pw - 8.0 * k, 24.0 * k),
                 anchor=(px + pw / 2.0, ny + 12.0 * k))
 
@@ -1135,6 +1159,14 @@ def _popup_month(ctx, g, alm, pal, fonts):
 
 
 def _popup(ctx, w, h, lay, kind, st, pal, fonts):
+    if kind == "settings":
+        g = settings_geom(w, h)
+        scx, scy = lay["seal"]
+        _line(ctx, scx, scy - 13.0 * g["k"], scx, g["y"] + g["bh"], pal["ink"],
+              1.0 * g["k"])
+        _card(ctx, g["x"], g["y"], g["bw"], g["bh"], pal, g["k"])
+        _popup_settings(ctx, g, st, pal, fonts)
+        return
     alm = _almanac(st["date"])
     if alm is None:
         return
@@ -1147,9 +1179,157 @@ def _popup(ctx, w, h, lay, kind, st, pal, fonts):
         _popup_three(ctx, g, alm, pal, fonts)
 
 
-def hit_test(w, h, st, x, y):
-    """点击命中：返回 "note"（历注行）/ "popup"（气泡内）/ "footer"（气泡底栏）/ None。"""
+# ---------------------------------------------------------------- 设置牌窗
+_SET_WM = (("zodiac", "生肖"), ("feitian", "飞天"), ("beast", "神兽"),
+           ("chen", "辰字"), ("none", "无"))
+_SET_ALPHA = (0.02, 0.45)     # 淡度可调范围（与水印绘制的钳制一致）
+CHEN_KAI = "AR PL UKai CN, AR PL UMing CN, Noto Serif CJK SC, serif"
+CHEN_MING = "AR PL UMing CN, AR PL UKai CN, Noto Serif CJK SC, serif"
+
+
+def settings_geom(w, h):
+    """设置牌窗与「天行」字印的几何，绘制与命中测试共此一份。
+    牌窗自字印向上展开；chips 各键即点击动作标识。"""
     lay = _layout(w, h)
+    k = lay["k"]
+    bw = min(max(_POP_W * k, lay["pw"] * 1.14), max(200.0, w - 16.0))
+    bh = min(254.0 * k, max(150.0, h - 16.0))
+    scx, scy = lay["seal"]
+    x = min(max(8.0, scx - bw / 2.0), max(8.0, w - 8.0 - bw))
+    y = scy - 18.0 * k - bh
+    if y < 8.0:
+        y = max(8.0, h - 8.0 - bh)
+    pad = 12.0 * k
+    left = x + pad + 36.0 * k          # 行内控件起始（让出左标签列）
+    right = x + bw - pad
+    chips = {}
+
+    def chip(key, rx, rw, cy):
+        chips[key] = (rx, cy - 11.0 * k, rw, 22.0 * k)
+
+    # 昼夜：三选
+    cy = y + 58.0 * k
+    cw = (right - left - 12.0 * k) / 3.0
+    chip("theme:auto", left, cw, cy)
+    chip("theme:day", left + (cw + 6.0 * k), cw, cy)
+    chip("theme:night", left + 2.0 * (cw + 6.0 * k), cw, cy)
+    # 剪影：五选
+    cy = y + 94.0 * k
+    cw = (right - left - 20.0 * k) / 5.0
+    for i, (key, _lbl) in enumerate(_SET_WM):
+        chip("wm:" + key, left + i * (cw + 5.0 * k), cw, cy)
+    # 淡度：滑轨（右留数值位）
+    tx1 = right - 44.0 * k
+    track = (left, y + 130.0 * k - 2.0 * k, tx1 - left, 4.0 * k)
+    # 辰字：二选
+    cy = y + 170.0 * k
+    chip("font:kai", left, 46.0 * k, cy)
+    chip("font:ming", left + 52.0 * k, 46.0 * k, cy)
+    # 壁纸：二动作
+    cy = y + 228.0 * k
+    half = (right - left - 8.0 * k) / 2.0
+    chip("wall:live", left, half, cy)
+    chip("wall:static", left + half + 8.0 * k, half, cy)
+    return dict(x=x, y=y, bw=bw, bh=bh, k=k, left=left, right=right, pad=pad,
+                seal=(scx - 16.0 * k, scy - 14.0 * k, 32.0 * k, 28.0 * k),
+                chips=chips, track=track, alpha_range=_SET_ALPHA)
+
+
+def _chip(ctx, r, label, sel, pal, fonts, k):
+    rx, ry, rw, rh = r
+    _round_rect(ctx, rx, ry, rw, rh, 4.0 * k)
+    if sel:
+        ctx.set_source_rgb(*pal["cinnabar"])
+        ctx.set_line_width(1.3 * k)
+        ctx.stroke()
+        tcol = pal["cinnabar"]
+    else:
+        ctx.set_source_rgb(*pal["hair"])
+        ctx.set_line_width(0.7 * k)
+        ctx.stroke()
+        tcol = pal["faint"]
+    _text(ctx, rx + rw / 2.0, ry + rh / 2.0, label, 10.0 * k, fonts["chen"], tcol)
+
+
+def _popup_settings(ctx, g, st, pal, fonts):
+    cfg = st.get("cfg") or {}
+    k = g["k"]
+    x, y, bw, bh = g["x"], g["y"], g["bw"], g["bh"]
+    chen_f, seal = fonts["chen"], fonts["seal"]
+    pad = g["pad"]
+    _text(ctx, x + pad, y + 18.0 * k, "设 置", 10.5 * k, seal, pal["gold"],
+          align="l")
+    _text(ctx, x + bw - pad, y + 18.0 * k, "改即存·半秒生效", 8.0 * k, chen_f,
+          pal["faint"], align="r")
+    _line(ctx, x + pad, y + 32.0 * k, x + bw - pad, y + 32.0 * k, pal["hair"],
+          0.8 * k)
+    for cy, label in ((58.0, "昼夜"), (94.0, "剪影"), (130.0, "淡度"),
+                      (170.0, "辰字"), (228.0, "壁纸")):
+        _text(ctx, x + pad, y + cy * k, label, 11.0 * k, chen_f, pal["faint"],
+              align="l")
+
+    theme = cfg.get("mode", {}).get("theme", "auto")
+    _chip(ctx, g["chips"]["theme:auto"], "随昼夜", theme == "auto", pal, fonts, k)
+    _chip(ctx, g["chips"]["theme:day"], "常昼", theme == "day", pal, fonts, k)
+    _chip(ctx, g["chips"]["theme:night"], "常夜", theme == "night", pal, fonts, k)
+
+    wm = cfg.get("panel", {}).get("watermark", "zodiac")
+    for key, lbl in _SET_WM:
+        _chip(ctx, g["chips"]["wm:" + key], lbl, wm == key, pal, fonts, k)
+
+    # 淡度滑轨：底轨 + 已选段 + 圆钮 + 数值
+    a = float(cfg.get("panel", {}).get("watermark_alpha", 0.16))
+    a0, a1 = g["alpha_range"]
+    tx, ty, tw, th = g["track"]
+    kn = tx + (min(max(a, a0), a1) - a0) / (a1 - a0) * tw
+    ctx.set_source_rgb(*pal["hair"])
+    _round_rect(ctx, tx, ty, tw, th, th / 2.0)
+    ctx.fill()
+    ctx.set_source_rgb(*pal["cinnabar"])
+    _round_rect(ctx, tx, ty, max(th, kn - tx), th, th / 2.0)
+    ctx.fill()
+    ctx.new_sub_path()
+    ctx.arc(kn, ty + th / 2.0, 5.5 * k, 0, 2 * math.pi)
+    ctx.fill()
+    _text(ctx, x + bw - pad, ty + th / 2.0, f"{a:.2f}", 9.5 * k, chen_f,
+          pal["ink"], align="r")
+
+    chen = cfg.get("fonts", {}).get("chen", CHEN_KAI)
+    _chip(ctx, g["chips"]["font:kai"], "楷体", chen.startswith("AR PL UKai"),
+          pal, fonts, k)
+    _chip(ctx, g["chips"]["font:ming"], "明体", chen.startswith("AR PL UMing"),
+          pal, fonts, k)
+    note = st.get("seal_note")
+    if note:
+        _text(ctx, x + bw - pad, y + 190.0 * k, note, 9.0 * k, chen_f,
+              pal["faint"], align="r")
+
+    live = bool(st.get("wall_live"))
+    _chip(ctx, g["chips"]["wall:live"], "壁画自启", live, pal, fonts, k)
+    _chip(ctx, g["chips"]["wall:static"], "静态壁纸", False, pal, fonts, k)
+
+
+def hit_test(w, h, st, x, y):
+    """点击命中：返回 "note"（历注行）/ "popup"（气泡内）/ "footer"（气泡底栏）/
+    "seal"（天行字印）/ "settings"（设置牌窗空白处）/ "set:…"（设置动作）/ None。"""
+    lay = _layout(w, h)
+    sg = settings_geom(w, h)
+    sx, sy, sw, sh = sg["seal"]
+    in_seal = sx <= x <= sx + sw and sy <= y <= sy + sh
+    kind = st.get("popup")
+    if kind == "settings":
+        if sg["x"] <= x <= sg["x"] + sg["bw"] and sg["y"] <= y <= sg["y"] + sg["bh"]:
+            for key, r in sg["chips"].items():
+                if r[0] <= x <= r[0] + r[2] and r[1] <= y <= r[1] + r[3]:
+                    return "set:" + key
+            tx, ty, tw, th = sg["track"]
+            if tx <= x <= tx + tw and ty - 6.0 * sg["k"] <= y <= ty + th + 6.0 * sg["k"]:
+                a0, a1 = sg["alpha_range"]
+                v = a0 + (x - tx) / max(tw, 1.0) * (a1 - a0)
+                return "set:alpha:%.3f" % min(max(v, a0), a1)
+            return "settings"
+    elif in_seal:
+        return "seal"
     nx, ny, nw, nh = lay["note_rect"]
     if nx <= x <= nx + nw and ny <= y <= ny + nh:
         return "note"
@@ -1252,12 +1432,23 @@ def draw_scene(ctx, w, h, st, pal, fonts, pointer=None, watermark=None,
         nx, ny, nw, nh = lay["note_rect"]
         if nx <= pointer[0] <= nx + nw and ny - 4 * k <= pointer[1] <= ny + nh + 4 * k:
             st["note_hover"] = True
+        scx, scy = lay["seal"]
+        if abs(pointer[0] - scx) <= 16.0 * k and abs(pointer[1] - scy) <= 14.0 * k:
+            st["seal_hover"] = True
 
     _draw_stars(ctx, cx, cy, R, st["t_min"], pal)
     _draw_needle(ctx, cx, cy, R, st["t_min"], pal, night)
     _panel(ctx, px, py0, pw, st, pal, fonts, k=k, watermark=watermark,
-           wm_alpha=wm_alpha)
+           wm_alpha=wm_alpha, seal_pos=lay["seal"])
 
     if st.get("popup"):
         _popup(ctx, w, h, lay, st["popup"], st, pal, fonts)
+
+    toast = st.get("toast")
+    if toast:
+        msg, until = toast
+        if time.time() < until:
+            _text(ctx, w * 0.5, h - 16.0, msg, 11.0, fonts["chen"], pal["gold"])
+        else:
+            st.pop("toast")
 

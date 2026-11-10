@@ -1,15 +1,15 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-"""刻盘钟·主程序（1.4.0）
+"""刻盘钟·主程序（1.5.0）
 用法：
   kepan-clock                正常启动（GTK4 窗口，单实例）
   kepan-clock --day|--night  锁定昼盘／夜盘启动
   kepan-clock --wallpaper    壁画模式：全屏置底窗，Esc 退出
   kepan-clock --png OUT.png [--hhmm 15:45] [--date 2026-11-10] [--size 960x680]
-              [--popup three|month] [--wallpaper] [--day|--night]
+              [--popup three|month|settings] [--wallpaper] [--day|--night]
                              离屏渲染一张盘面存为 PNG 后退出（自检用）
 配置查找次序：~/.config/kepan-clock/config.toml → 程序目录 config.toml；
-配置保存后约半秒热重载，免重启。
+配置保存后约半秒热重载，免重启。设置牌窗（右下「天行」字印）改即存。
 """
 import datetime
 import math
@@ -81,6 +81,78 @@ def load_config():
             src = p
             break
     return _deep_merge(DEFAULT_CONFIG, user), src
+
+
+def _toml_literal(v):
+    import json
+    return json.dumps(v, ensure_ascii=False)
+
+
+def save_cfg_value(section, key, value):
+    """把单项设置写回用户级配置（~/.config 恒定，即便当前读的是程序目录
+    兜底配置），逐行替换保留注释；缺文件时先以安装目录模板作底。
+    原子写入，写完由文件监视触发热重载，不在写入端手动刷新。"""
+    p = pathlib.Path.home() / ".config" / "kepan-clock" / "config.toml"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        try:
+            text = (_HERE / "config.toml").read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        p.write_text(text, encoding="utf-8")
+    lines = p.read_text(encoding="utf-8").splitlines()
+    out = []
+    cur = None
+    done = False
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("[") and s.endswith("]"):
+            if cur == section and not done:
+                out.append(f"{key} = {_toml_literal(value)}")   # 段内未找到，段尾补插
+                done = True
+            cur = s[1:-1].strip()
+        elif cur == section and not done and s.split("=")[0].strip() == key:
+            out.append(f"{key} = {_toml_literal(value)}")
+            done = True
+            continue
+        out.append(ln)
+    if not done:
+        if cur != section:
+            out.append("")
+            out.append(f"[{section}]")
+        out.append(f"{key} = {_toml_literal(value)}")
+    tmp = p.with_name("config.toml.tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+
+
+_AUTO_PATH = (pathlib.Path.home() / ".config" / "autostart" /
+              "cn.workbuddy.kepan.wallpaper.desktop")
+
+
+def _wall_autostart_on():
+    try:
+        return "X-GNOME-Autostart-enabled=false" not in \
+            _AUTO_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def _set_wall_autostart(on):
+    """壁画开机自启：只写/改自启项，从不删除用户目录下的文件。"""
+    _AUTO_PATH.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=刻盘钟·壁画",
+        "Comment=十二时辰盘钟动态壁画（刻盘钟）",
+        "Exec=kepan-clock --wallpaper",
+        "Icon=cn.workbuddy.kepan",
+        "X-GNOME-Autostart-enabled=" + ("true" if on else "false"),
+    ]) + "\n"
+    tmp = _AUTO_PATH.with_name(_AUTO_PATH.name + ".tmp")
+    tmp.write_text(body, encoding="utf-8")
+    os.replace(tmp, _AUTO_PATH)
 
 
 def _tz_minutes(now):
@@ -413,6 +485,11 @@ class ClockWindow(Gtk.ApplicationWindow):
         self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
         self._last_play = None     # 上一发 paplay，供 poll 回收与失败计数
         self._snd_fail = 0         # 连续失败计数：≥2 重建声样，≥6 转诊断
+        self._alpha_drag = False   # 淡度滑轨拖动中：只改内存，松手落盘
+        self._toast = None         # (文字, 失效时刻)
+        self._seal_note = ("款识：篆书生效中"
+                           if seal_effective(cfg["fonts"]["seal"])
+                           else "款识：篆体未装·暂退楷体")
         self.set_default_size(960, 680)
         self.set_size_request(520, 520)
 
@@ -428,6 +505,7 @@ class ClockWindow(Gtk.ApplicationWindow):
 
         gc = Gtk.GestureClick()
         gc.connect("pressed", self._clicked)
+        gc.connect("released", self._released)
         self.da.add_controller(gc)
 
         kc = Gtk.EventControllerKey()
@@ -443,10 +521,14 @@ class ClockWindow(Gtk.ApplicationWindow):
 
     def _motion(self, ctl, x, y):
         self._pointer = (x, y)
+        if self._alpha_drag and self._popup == "settings":
+            self._apply_alpha_xy(x)
         st = getattr(self, "st", None)
         if st is not None:
             hit = dial.hit_test(self.da.get_width(), self.da.get_height(), st, x, y)
-            name = "pointer" if hit in ("note", "footer") else "default"
+            pointer = (hit in ("note", "footer", "seal", "settings")
+                       or (isinstance(hit, str) and hit.startswith("set:")))
+            name = "pointer" if pointer else "default"
             if name != self._cursor:
                 self._cursor = name
                 self.da.set_cursor_from_name(name)
@@ -462,7 +544,13 @@ class ClockWindow(Gtk.ApplicationWindow):
         if st is None:
             return
         hit = dial.hit_test(self.da.get_width(), self.da.get_height(), st, x, y)
-        if hit == "note":
+        if hit == "seal":
+            self._popup = None if self._popup == "settings" else "settings"
+        elif isinstance(hit, str) and hit.startswith("set:"):
+            self._on_setting(hit[4:])
+        elif hit == "settings":
+            return                       # 牌窗空白处：不收起
+        elif hit == "note":
             self._popup = None if self._popup else "three"
         elif hit == "footer":
             self._popup = "three" if self._popup == "month" else "month"
@@ -472,12 +560,124 @@ class ClockWindow(Gtk.ApplicationWindow):
             self._popup = None
         self.da.queue_draw()
 
+    def _released(self, gesture, n_press, x, y):
+        if self._alpha_drag:
+            self._alpha_drag = False
+            self._save("panel", "watermark_alpha",
+                       self.cfg["panel"]["watermark_alpha"])
+        return False
+
     def _key(self, ctl, keyval, keycode, state):
         if keyval == Gdk.KEY_Escape and self._popup:
             self._popup = None
             self.da.queue_draw()
             return True
         return False
+
+    # ------------------------------------------------------------- 设置
+    def _save(self, section, key, value):
+        try:
+            save_cfg_value(section, key, value)
+        except OSError as e:
+            _log_error(f"配置写回失败（{section}.{key}）：{e}")
+            self._say("配置写回失败，详见 error.log")
+
+    def _say(self, msg):
+        self._toast = (msg, time.time() + 2.6)
+
+    def _decorate(self, st):
+        """把设置牌窗所需的视图状态挂到渲染状态上。"""
+        st["cfg"] = self.cfg
+        st["seal_note"] = self._seal_note
+        st["wall_live"] = _wall_autostart_on()
+        if self._toast:
+            if time.time() < self._toast[1]:
+                st["toast"] = self._toast
+            else:
+                self._toast = None
+        return st
+
+    def _apply_alpha_xy(self, x):
+        sg = dial.settings_geom(self.da.get_width(), self.da.get_height())
+        tx, _ty, tw, _th = sg["track"]
+        a0, a1 = sg["alpha_range"]
+        v = a0 + (x - tx) / max(tw, 1.0) * (a1 - a0)
+        self.cfg["panel"]["watermark_alpha"] = round(min(max(v, a0), a1), 3)
+        self.da.queue_draw()
+
+    def _on_setting(self, key):
+        cfg = self.cfg
+        if key.startswith("theme:"):
+            # CLI --day/--night 强制时主题仍受其钳制；常规启动以配置为准
+            v = key.split(":", 1)[1]
+            cfg["mode"]["theme"] = v
+            self._save("mode", "theme", v)
+        elif key.startswith("wm:"):
+            v = key.split(":", 1)[1]
+            cfg["panel"]["watermark"] = v
+            self._save("panel", "watermark", v)
+        elif key.startswith("font:"):
+            v = dial.CHEN_KAI if key == "font:kai" else dial.CHEN_MING
+            cfg["fonts"]["chen"] = v
+            self._save("fonts", "chen", v)
+        elif key.startswith("alpha:"):
+            self._alpha_drag = True
+            self.cfg["panel"]["watermark_alpha"] = float(key.split(":", 1)[1])
+        elif key == "wall:live":
+            self._toggle_wall_live()
+        elif key == "wall:static":
+            self._set_static_wall()
+        self.da.queue_draw()
+
+    def _toggle_wall_live(self):
+        on = not _wall_autostart_on()
+        try:
+            _set_wall_autostart(on)
+        except OSError as e:
+            _log_error(f"自启项写入失败：{e}")
+            self._say("自启项写入失败，详见 error.log")
+            return
+        if on:
+            exe = shutil.which("kepan-clock")
+            cmd = ([exe, "--wallpaper"] if exe
+                   else ["/usr/bin/python3", str(_HERE / "app.py"), "--wallpaper"])
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                self._say("壁画自启：开（已启动）")
+            except OSError:
+                self._say("壁画自启：开")
+        else:
+            self._say("壁画自启：关")
+
+    def _set_static_wall(self):
+        try:
+            d = pathlib.Path.home() / ".local" / "share" / "kepan-clock"
+            d.mkdir(parents=True, exist_ok=True)
+            out = d / "wallpaper.png"
+            W, H = 1920, 1080
+            try:
+                mon = Gdk.Display.get_default().get_monitors().get_item(0)
+                geo = mon.get_geometry()
+                W, H = max(640, geo.width), max(480, geo.height)
+            except Exception:
+                pass
+            render_png(str(out), self.cfg, size=(W, H), wallpaper=True)
+            if shutil.which("gsettings") is None:
+                self._say(f"PNG 已存 {out}（未找到 gsettings）")
+                return
+            uri = out.resolve().as_uri()
+            for key in ("picture-uri", "picture-uri-dark"):
+                subprocess.run(["gsettings", "set",
+                                "org.gnome.desktop.background", key, uri],
+                               check=False, timeout=15)
+            subprocess.run(["gsettings", "set", "org.gnome.desktop.background",
+                            "picture-options", "zoom"],
+                           check=False, timeout=15)
+            self._say("已设为桌面壁纸（静态快照）")
+        except Exception as e:
+            _log_error(f"设静态壁纸失败：{e}\n{traceback.format_exc()}")
+            self._say("设壁纸失败，详见 error.log")
 
     def _cfg_changed(self, mon, f1, f2, evt):
         if getattr(self, "_reload_pending", False):
@@ -493,6 +693,9 @@ class ClockWindow(Gtk.ApplicationWindow):
             self._sounds = None
             self._snd_fail = 0
             self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
+            self._seal_note = ("款识：篆书生效中"
+                               if seal_effective(cfg["fonts"]["seal"])
+                               else "款识：篆体未装·暂退楷体")
             self.da.queue_draw()
         except Exception:
             _log_error("热重载失败，沿用旧配置。")
@@ -553,6 +756,7 @@ class ClockWindow(Gtk.ApplicationWindow):
                         self._fire("drum1")
             self._last_min = m
         self.st = st
+        self._decorate(st)
         st["popup"] = self._popup
         self.da.queue_draw()
         return "flip" in st or 0.0 < st["blend"] < 1.0
@@ -582,6 +786,7 @@ class ClockWindow(Gtk.ApplicationWindow):
         st = getattr(self, "st", None)
         if st is None:
             st = compute_state(datetime.datetime.now(), self.cfg, self.force_night)
+            self._decorate(st)
             st["popup"] = self._popup
         pal = dial.lerp_pal(dial.DAY, dial.NIGHT, st["blend"])
         fonts = {"chen": self.cfg["fonts"]["chen"], "seal": self.cfg["fonts"]["seal"]}
@@ -702,6 +907,10 @@ def render_png(path, cfg, hhmm=None, force_night=None, pointer=None,
         hh, mm = hhmm.split(":")[:2]
         now = now.replace(hour=int(hh), minute=int(mm), second=0)
     st = compute_state(now, cfg, force_night=force_night)
+    st["cfg"] = cfg
+    st["seal_note"] = ("款识：篆书生效中" if seal_effective(cfg["fonts"]["seal"])
+                       else "款识：篆体未装·暂退楷体")
+    st["wall_live"] = _wall_autostart_on()
     st["popup"] = popup
     pal = dial.lerp_pal(dial.DAY, dial.NIGHT, st["blend"])
     fonts = {"chen": cfg["fonts"]["chen"], "seal": cfg["fonts"]["seal"]}

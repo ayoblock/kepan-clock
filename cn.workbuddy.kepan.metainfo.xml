@@ -8,7 +8,7 @@
   <description>
     <p>刻盘钟是一座装进桌面里的十二时辰古钟：主盘三重刻度——辰字环（一辰三十度）、初正环（初正各十五度）、九十六刻环（一刻三点七五度），晷针一日一夜一周，合二十四时制。午上子下、卯左酉右，与现代钟面互为镜像，正合「面南而立」的古人视角。</p>
     <p>右侧列有读数、更牌窗（五更二十五点，依日出日落与昏旦偏移定夜弧）、真太阳时、朱印与八刻副盘。内置自推农历（1900–2100 月序表与 Meeus 定气置闰），历注常驻一行，点开两级气泡：昨／今／明三日条与整月历，星期用七政曜日（日月火水木金土）。</p>
-    <p>昼墨夜金双盘随日出日落三十秒渐变，星空依恒星日缓转；右列生肖剪影水印随辰换兽。另有壁画模式：全屏置底，大盘居中、四角竖题，可作家居壁画。报时声默认关，配置开启后辰初钟三下、辰正鼓二下、每刻鼓一声。</p>
+    <p>昼墨夜金双盘随日出日落三十秒渐变，星空依恒星日缓转；右列生肖／飞天／神兽剪影水印随辰变换。右下「天行」字印点开设置牌窗：昼夜三态、剪影与淡度、辰字楷明、壁纸（壁画自启／静态快照），改即存、半秒生效。另有壁画模式：全屏置底，大盘居中、四角竖题，可作家居壁画。报时声默认关，配置开启后辰初钟三下、辰正鼓二下、每刻鼓一声。</p>
   </description>
   <launchable type="desktop-id">cn.workbuddy.kepan.desktop</launchable>
   <screenshots>
@@ -21,6 +21,10 @@
       <caption>历注气泡：昨／今／明三日条，点「展全月」看整月历</caption>
     </screenshot>
     <screenshot>
+      <image>https://raw.githubusercontent.com/ayoblock/kepan-clock/main/screenshots/settings.png</image>
+      <caption>设置牌窗：昼夜、剪影与壁纸，改即存</caption>
+    </screenshot>
+    <screenshot>
       <image>https://raw.githubusercontent.com/ayoblock/kepan-clock/main/screenshots/wallpaper.png</image>
       <caption>夜盘壁画模式：全屏置底，大盘居中、四角竖题</caption>
     </screenshot>
@@ -28,6 +32,11 @@
   <url type="homepage">https://github.com/ayoblock/kepan-clock</url>
   <url type="bugtracker">https://github.com/ayoblock/kepan-clock/issues</url>
   <releases>
+    <release version="1.5.0" date="2026-11-11">
+      <description>
+        <p>新增设置牌窗：右下「天行」字印点开，昼夜（随昼夜／常昼／常夜）、剪影（生肖／飞天／神兽／辰字／无）与淡度滑轨、辰字楷明二选、壁纸动作（壁画模式开机自启并即时拉起／静态快照设为桌面壁纸）皆改即存，写入用户配置并热重载，注释保留。</p>
+      </description>
+    </release>
     <release version="1.4.3" date="2026-11-11">
       <description>
         <p>新增飞天水印：当前时辰飞天剪影随辰换姿（十二姿），并解除尺寸限制，占满更牌窗之下至副盘上缘的区域。生肖与四神兽水印同样解除定尺。</p>
