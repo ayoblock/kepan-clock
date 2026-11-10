@@ -32,6 +32,11 @@
   <url type="homepage">https://github.com/ayoblock/kepan-clock</url>
   <url type="bugtracker">https://github.com/ayoblock/kepan-clock/issues</url>
   <releases>
+    <release version="1.5.1" date="2026-11-11">
+      <description>
+        <p>右列重排：司辰小印上移与读数同行居前，「天行」字印入主原朱印位并放大为设置入口；右列底缘即副盘底，无悬挂元素，矮窗不再裁切，缩放下限放宽。</p>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-11-11">
       <description>
         <p>新增设置牌窗：右下「天行」字印点开，昼夜（随昼夜／常昼／常夜）、剪影（生肖／飞天／神兽／辰字／无）与淡度滑轨、辰字楷明二选、壁纸动作（壁画模式开机自启并即时拉起／静态快照设为桌面壁纸）皆改即存，写入用户配置并热重载，注释保留。</p>

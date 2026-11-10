@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VER=1.5.0
+VER=1.5.1
 PKG=kepan-clock_${VER}-1_all
 ROOT="pkgroot/${PKG}"
 

@@ -2,8 +2,8 @@
 """刻盘钟·盘面渲染（1.5.0）
 主盘：辰字环（楷）＋初正环＋九十六刻环＋素环（星空三等、银河弱带、四象瓦当
 线描）＋晷针（昼影夜晕）。副盘：八刻盘，刻针一辰一周，盘心生肖篆字。
-面板：读数、更牌窗（翻牌动画、试时显示）、节气、对时、真太阳时、朱印、名例、
-八刻副盘，右下「天行」字印为设置入口（设置牌窗：昼夜/剪影/淡度/辰字/壁纸）。
+面板：顶行司辰小印在前、大读数随后，更牌窗（翻牌动画、试时显示）、节气、对时、
+真太阳时、历注、名例、八刻副盘，列中「天行」字印为设置入口（设置牌窗：昼夜/剪影/淡度/辰字/壁纸）。
 性能：静态层（环、字、刻线、四象、晕影）入 ImageSurface 缓存，逐秒只绘
 星空与晷针；昼夜渐变期间（blend∈(0,1)）绕过缓存全量重绘。
 """
@@ -120,6 +120,17 @@ def _line(ctx, x1, y1, x2, y2, color, lw=1.0):
     ctx.move_to(x1, y1)
     ctx.line_to(x2, y2)
     ctx.stroke()
+
+
+def _text_w(ctx, s, size, families):
+    """Pango 实测文本像素宽，供顶行「印＋读数」整组居中。"""
+    lay = PangoCairo.create_layout(ctx)
+    fd = Pango.FontDescription()
+    fd.set_family(families)
+    fd.set_absolute_size(size * Pango.SCALE)
+    lay.set_font_description(fd)
+    lay.set_text(s, -1)
+    return lay.get_pixel_size()[0]
 
 
 def _round_rect(ctx, x, y, w, h, r):
@@ -421,7 +432,8 @@ def _dial_side(ctx, cx, cy, r, st, pal, fonts):
 
 
 # ---------------------------------------------------------------- 面板
-_PANEL_H = 566.0   # 面板设计基准高（k=1 时），缩放后列高为 _PANEL_H*k
+_PANEL_H = 560.0   # 面板设计基准高（k=1 时），缩放后列高为 _PANEL_H*k
+                   # 底缘即八刻副盘底（482+76+2），无悬挂元素
 _NOTE_Y = 276.0    # 历注行中线（可点，弹出气泡）
 _SEAL_Y = 302.0    # 朱印上缘
 _NAME_Y = 374.0    # 名例首行
@@ -882,8 +894,9 @@ def _watermark(ctx, cx, bottom, radius, st, pal, fonts, kind, alpha=0.16,
 
 def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16,
            seal_pos=None):
-    """右列自上而下：读数、更牌窗（翻牌/试时）、节气、对时、真太阳时、
-    历注（可点）、朱印、名例、八刻副盘。全列居中锚定，随 k 等比缩放。"""
+    """右列自上而下：司辰小印＋读数、更牌窗（翻牌/试时）、节气、对时、
+    真太阳时、历注（可点）、天行字印（设置入口）、名例、八刻副盘。
+    全列居中锚定，随 k 等比缩放，底缘即副盘底，无悬挂元素。"""
     chen_f, seal = fonts["chen"], fonts["seal"]
     ink, faint = pal["ink"], pal["faint"]
     cx = x + w / 2.0
@@ -898,7 +911,20 @@ def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16,
         _watermark(ctx, cx, y + (_NOTE_Y + 9.0) * k, side_r, st, pal, fonts,
                    watermark, wm_alpha)
 
-    _text(ctx, cx, y + 40 * k, st["read"], 42 * k, chen_f, ink)
+    # 顶行：司辰小印在前，大读数随后；组宽实测居中，过窄列则退回独排
+    ry = y + 40 * k
+    rw_ = _text_w(ctx, st["read"], 42 * k, chen_f)
+    ssz, gap = 30.0 * k, 12.0 * k
+    if ssz + gap + rw_ <= w - 16.0 * k:
+        gx = cx - (ssz + gap + rw_) / 2.0
+        ctx.set_source_rgb(*pal["cinnabar"])
+        _round_rect(ctx, gx, ry - ssz / 2.0, ssz, ssz, 4.0 * k)
+        ctx.fill()
+        _text(ctx, gx + ssz / 2.0, ry - 6.0 * k, "司", 11.0 * k, seal, pal["bg"])
+        _text(ctx, gx + ssz / 2.0, ry + 6.6 * k, "辰", 11.0 * k, seal, pal["bg"])
+        _text(ctx, gx + ssz + gap + rw_ / 2.0, ry, st["read"], 42 * k, chen_f, ink)
+    else:
+        _text(ctx, cx, ry, st["read"], 42 * k, chen_f, ink)
 
     # 更牌窗
     bx, by, bw, bh = x + 10 * k, y + 92 * k, w - 20 * k, 62 * k
@@ -950,14 +976,24 @@ def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16,
                 x += 4.5 * k
             ctx.stroke()
 
-    # 朱印
-    ss = 50 * k
-    sx, sy = cx - ss / 2.0, y + _SEAL_Y * k
-    ctx.set_source_rgb(*pal["cinnabar"])
-    ctx.rectangle(sx, sy, ss, ss)
-    ctx.fill()
-    _text(ctx, cx, sy + ss * 0.30, "司", 19 * k, seal, pal["bg"])
-    _text(ctx, cx, sy + ss * 0.71, "辰", 19 * k, seal, pal["bg"])
+    # 天行字印（设置入口，居原朱印位）：常时朱线空印，悬停/展开时实印
+    if seal_pos is not None:
+        lit = bool(st.get("seal_hover")) or st.get("popup") == "settings"
+        scx, scy = seal_pos
+        sw = 50.0 * k
+        sy0_ = scy - sw / 2.0
+        _round_rect(ctx, scx - sw / 2.0, sy0_, sw, sw, 6.0 * k)
+        if lit:
+            ctx.set_source_rgb(*pal["cinnabar"])
+            ctx.fill()
+            tcol = pal["bg"]
+        else:
+            ctx.set_source_rgb(*pal["cinnabar"])
+            ctx.set_line_width(2.0 * k)
+            ctx.stroke()
+            tcol = pal["cinnabar"]
+        _text(ctx, scx, sy0_ + sw * 0.30, "天", 17.0 * k, fonts["seal"], tcol)
+        _text(ctx, scx, sy0_ + sw * 0.70, "行", 17.0 * k, fonts["seal"], tcol)
 
     # 名例一行
     _text(ctx, cx, y + _NAME_Y * k, "观天之道，执天之行，尽矣！", 11 * k, chen_f, faint)
@@ -965,24 +1001,6 @@ def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16,
     # 八刻副盘
     r = side_r
     _dial_side(ctx, cx, y + _SIDE_Y * k, r, st, pal, fonts)
-
-    # 天行字印（设置入口）：常时朱线空印，悬停/展开时实印
-    if seal_pos is not None:
-        lit = bool(st.get("seal_hover")) or st.get("popup") == "settings"
-        scx, scy = seal_pos
-        sw, sh = 24.0 * k, 22.0 * k
-        _round_rect(ctx, scx - sw / 2.0, scy - sh / 2.0, sw, sh, 3.5 * k)
-        if lit:
-            ctx.set_source_rgb(*pal["cinnabar"])
-            ctx.fill()
-            tcol = pal["bg"]
-        else:
-            ctx.set_source_rgb(*pal["cinnabar"])
-            ctx.set_line_width(1.1 * k)
-            ctx.stroke()
-            tcol = pal["cinnabar"]
-        _text(ctx, scx, scy - 5.2 * k, "天", 8.2 * k, fonts["seal"], tcol)
-        _text(ctx, scx, scy + 5.6 * k, "行", 8.2 * k, fonts["seal"], tcol)
 
 
 # ---------------------------------------------------------------- 历注气泡
@@ -1011,7 +1029,7 @@ def _layout(w, h):
     """盘面与面板的几何，绘制与命中测试共此一份，避免两处走形。"""
     R = max(60.0, min((h - 72.0) / 2.0, (w - 292.0) / 2.0))
     pw = max(200.0, min(480.0, w * 0.30))
-    k = max(0.85, min(pw / 260.0, (h - 60.0) / _PANEL_H, 2.2))
+    k = max(0.78, min(pw / 260.0, (h - 60.0) / _PANEL_H, 2.2))
     content_w = 2.0 * R + 28.0 + pw
     x_left = max(0.0, (w - content_w) / 2.0)
     cx, cy = x_left + R, h / 2.0
@@ -1019,7 +1037,7 @@ def _layout(w, h):
     py0 = max(30.0, (h - _PANEL_H * k) / 2.0)
     ny = py0 + _NOTE_Y * k
     scx = px + pw / 2.0
-    scy = min(py0 + _PANEL_H * k + 16.0 * k, h - 11.0)   # 天行字印心
+    scy = py0 + (_SEAL_Y + 25.0) * k   # 天行字印心（居原朱印位，面板中部）
     return dict(R=R, pw=pw, k=k, cx=cx, cy=cy, px=px, py0=py0, note_y=ny,
                 seal=(scx, scy),
                 note_rect=(px + 4.0 * k, ny - 12.0 * k, pw - 8.0 * k, 24.0 * k),
@@ -1162,7 +1180,7 @@ def _popup(ctx, w, h, lay, kind, st, pal, fonts):
     if kind == "settings":
         g = settings_geom(w, h)
         scx, scy = lay["seal"]
-        _line(ctx, scx, scy - 13.0 * g["k"], scx, g["y"] + g["bh"], pal["ink"],
+        _line(ctx, scx, scy - 28.0 * g["k"], scx, g["y"] + g["bh"], pal["ink"],
               1.0 * g["k"])
         _card(ctx, g["x"], g["y"], g["bw"], g["bh"], pal, g["k"])
         _popup_settings(ctx, g, st, pal, fonts)
@@ -1231,7 +1249,7 @@ def settings_geom(w, h):
     chip("wall:live", left, half, cy)
     chip("wall:static", left + half + 8.0 * k, half, cy)
     return dict(x=x, y=y, bw=bw, bh=bh, k=k, left=left, right=right, pad=pad,
-                seal=(scx - 16.0 * k, scy - 14.0 * k, 32.0 * k, 28.0 * k),
+                seal=(scx - 25.0 * k, scy - 25.0 * k, 50.0 * k, 50.0 * k),
                 chips=chips, track=track, alpha_range=_SET_ALPHA)
 
 
