@@ -1,10 +1,10 @@
 #!/bin/sh
 # 刻盘钟 deb 打包脚本
-# 用法：./build_deb.sh   产物：../kepan-clock_1.4.1-1_all.deb
+# 用法：./build_deb.sh   产物：../kepan-clock_1.4.2-1_all.deb
 set -e
 cd "$(dirname "$0")"
 
-VER=1.4.1
+VER=1.4.2
 PKG=kepan-clock_${VER}-1_all
 ROOT="pkgroot/${PKG}"
 
@@ -67,6 +67,11 @@ StartupWMClass=cn.workbuddy.kepan
 Categories=Utility;Clock;
 Keywords=clock;time;shichen;刻盘钟;时辰;
 EOF
+
+# ---- AppStream 元数据（软件中心资讯：简介/描述/截图）----
+install -d "${ROOT}/usr/share/metainfo"
+install -m 644 cn.workbuddy.kepan.metainfo.xml \
+        "${ROOT}/usr/share/metainfo/"
 
 # ---- 壁画模式桌面项 ----
 cat > "${ROOT}/usr/share/applications/cn.workbuddy.kepan.wallpaper.desktop" <<'DESK'

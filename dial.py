@@ -730,9 +730,8 @@ def _panel(ctx, x, y, w, st, pal, fonts, k=1.0, watermark=None, wm_alpha=0.16):
     _text(ctx, cx, sy + ss * 0.30, "司", 19 * k, seal, pal["bg"])
     _text(ctx, cx, sy + ss * 0.71, "辰", 19 * k, seal, pal["bg"])
 
-    # 名例两行
-    _text(ctx, cx, y + _NAME_Y * k, "正名入文书 · 铭款刻于器", 11 * k, chen_f, faint)
-    _text(ctx, cx, y + (_NAME_Y + 18.0) * k, "俗称行于口", 11 * k, chen_f, faint)
+    # 名例一行
+    _text(ctx, cx, y + _NAME_Y * k, "观天之道，执天之行，尽矣！", 11 * k, chen_f, faint)
 
     # 八刻副盘
     r = side_r

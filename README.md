@@ -1,6 +1,6 @@
 # 刻盘钟 · 司辰
 
-十二时辰盘钟的 Linux 桌面程序（1.4.1），MIT 许可。以「以天度为盘、以晷影为针」为制：
+十二时辰盘钟的 Linux 桌面程序（1.4.2），MIT 许可。以「以天度为盘、以晷影为针」为制：
 
 - **正名「刻盘钟」，铭款「司辰」，俗称「时盘」**——正名入文书，铭款刻于器，俗称行于口。
 - 主盘三重刻度：一辰三十度，初正十五度，九十六刻一刻三点七五度；辰字朱填居辰之中，午上子下、卯左酉右，晷针顺时针行。
@@ -26,10 +26,10 @@
 
 ## 安装（deb）
 
-从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.1-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
+从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.2-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
 
 ```sh
-sudo dpkg -i kepan-clock_1.4.1-1_all.deb
+sudo dpkg -i kepan-clock_1.4.2-1_all.deb
 sudo apt-get install -f   # 若缺依赖
 ```
 
@@ -163,15 +163,17 @@ kepan_clock/
 ## 打包
 
 ```sh
-sh build_deb.sh      # 产物：../kepan-clock_1.4.1-1_all.deb
+sh build_deb.sh      # 产物：../kepan-clock_1.4.2-1_all.deb
 ```
 
 需 `dpkg-deb`（`dpkg-dev` 包）。脚本按 `pkgroot/` 组织目录树、写 control 与 postinst、
 刷新图标缓存，不触碰 `~/.config/kepan-clock/` 下的用户配置。
 
-## 名例（页脚同文）
+## 名例
 
 > 正名「刻盘钟」，铭款「司辰」，俗称「时盘」；正名入文书，铭款刻于器，俗称行于口，三场各守，不得混用。
+
+盘面页脚现刻《阴符经》句：**观天之道，执天之行，尽矣！**
 
 ## 许可
 
