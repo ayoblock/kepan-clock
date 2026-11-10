@@ -22,7 +22,8 @@ enabled = false
 debug = false
 
 [panel]
-# 右列背景水印：zodiac 当前时辰生肖剪影（随辰换兽）/ beast 四神兽 / chen 辰字大篆 / none 无。
+# 右列背景水印：zodiac 当前时辰生肖剪影（随辰换兽）/ feitian 当前时辰飞天
+# 剪影（随辰换姿，占满更牌窗之下区域）/ beast 四神兽 / chen 辰字大篆 / none 无。
 # watermark_alpha：水印不透明度 0.02–0.45，默认 0.16。
 watermark = "zodiac"
 watermark_alpha = 0.16

@@ -1,6 +1,6 @@
 # 刻盘钟 · 司辰
 
-十二时辰盘钟的 Linux 桌面程序（1.4.2），MIT 许可。以「以天度为盘、以晷影为针」为制：
+十二时辰盘钟的 Linux 桌面程序（1.4.3），MIT 许可。以「以天度为盘、以晷影为针」为制：
 
 - **正名「刻盘钟」，铭款「司辰」，俗称「时盘」**——正名入文书，铭款刻于器，俗称行于口。
 - 主盘三重刻度：一辰三十度，初正十五度，九十六刻一刻三点七五度；辰字朱填居辰之中，午上子下、卯左酉右，晷针顺时针行。
@@ -14,7 +14,8 @@
 - 报时声（默认关）：辰初钟三下、辰正鼓二下、每刻鼓一声；config `[sound] enabled = true` 开启，须有 `paplay`。
 - 声样目录 `~/.config/kepan-clock/sound/`：随包附真实钟鼓录音（钟「Gong or bell vibrant (short)」CC0；鼓「Bass drum」CC BY-SA 3.0，作者 Clngre，来源维基共享资源，署名见目录内《声样来源.txt》）。放入自备的同名 `bell.wav` / `drum.wav`（单声样 16-bit WAV，任意采样率）即自动重组三件报时声，删除事件文件或重启生效。
 - 历注与气泡（1.4.0）：真太阳时下一行常驻历注「年干支 · 农历月日 · 日干支 · 候」，点按弹出素纸气泡——一级为昨／今／明三日条，底栏「展全月」展开二级整月历（朔日与节气朱标、今日朱框），点历注行或按 Esc 收起，点气泡外亦收。星期以七政曜日名之（日月火水木金土，日曜为周日）。
-- 生肖水印（1.4.0）：右列背景以当前时辰生肖剪影作低透明度水印（随辰换兽），幅面与八刻副盘同径、下缘踩在历注下线；可选四神兽 / 辰字大篆 / 无，透明度 `panel.watermark_alpha` 可调。
+- 生肖水印（1.4.0）：右列背景以当前时辰生肖剪影作低透明度水印（随辰换兽），可选四神兽 / 辰字大篆 / 无，透明度 `panel.watermark_alpha` 可调。1.4.3 起生肖与四神兽同样解除定尺：等比缩放居中，占满更牌窗之下至副盘上缘的区域（辰字大篆仍按小表盘同径）。
+- 飞天水印（1.4.3）：`panel.watermark = "feitian"` 切为当前时辰飞天剪影（随辰换姿，十二姿各异——右飞、仰升、俯落、横卧、回望等），并解除定尺：占满更牌窗之下至副盘上缘的区域，窗越大像越大。剪影为部件拼装自绘（贝塞尔粗线），无版权顾虑。
 - 壁画模式（1.4.0）：`kepan-clock --wallpaper` 启动全屏置底窗——大盘居中（径 0.72×短边），四角竖题（左上款识、右上映候、左下日干支、右下年干支），底部一行「时辰读数 · 更点 · 历注」；平稳时六秒一换，昼夜渐变期十帧；Esc 退出。应用号独立（`cn.workbuddy.kepan.wallpaper`），可与常驻时钟同时运行。
 - 内置农历（1.4.0）：`lunar.py` 自推月序表（1900–2100）＋ Meeus 节气，春节 11 例、闰月 5 例、干支锚点、节气、候与 400 日连续性自校全过；不依赖第三方历算库。
 
@@ -26,10 +27,10 @@
 
 ## 安装（deb）
 
-从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.2-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
+从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.3-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
 
 ```sh
-sudo dpkg -i kepan-clock_1.4.2-1_all.deb
+sudo dpkg -i kepan-clock_1.4.3-1_all.deb
 sudo apt-get install -f   # 若缺依赖
 ```
 
@@ -65,7 +66,7 @@ kepan-clock --png wp.png --wallpaper --size 1920x1080    # 壁画预览图
 | `mode.theme` | auto | auto 随日出日落 / day / night |
 | `fonts.chen` | 楷体链 | 辰字与读数 |
 | `fonts.seal` | 游龙篆书链 | 款识、四象、节气、生肖 |
-| `panel.watermark` | zodiac | 右列背景水印：zodiac 当前时辰生肖剪影 / beast 四神兽 / chen 辰字大篆 / none |
+| `panel.watermark` | zodiac | 右列背景水印：zodiac 生肖剪影 / feitian 飞天剪影（随辰换姿，占满更牌下区域）/ beast 四神兽 / chen 辰字大篆 / none |
 | `panel.watermark_alpha` | 0.16 | 水印不透明度（0.02–0.45） |
 
 ## 字体说明（重要）
@@ -163,7 +164,7 @@ kepan_clock/
 ## 打包
 
 ```sh
-sh build_deb.sh      # 产物：../kepan-clock_1.4.2-1_all.deb
+sh build_deb.sh      # 产物：../kepan-clock_1.4.3-1_all.deb
 ```
 
 需 `dpkg-deb`（`dpkg-dev` 包）。脚本按 `pkgroot/` 组织目录树、写 control 与 postinst、

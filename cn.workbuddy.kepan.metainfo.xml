@@ -28,6 +28,11 @@
   <url type="homepage">https://github.com/ayoblock/kepan-clock</url>
   <url type="bugtracker">https://github.com/ayoblock/kepan-clock/issues</url>
   <releases>
+    <release version="1.4.3" date="2026-11-11">
+      <description>
+        <p>新增飞天水印：当前时辰飞天剪影随辰换姿（十二姿），并解除尺寸限制，占满更牌窗之下至副盘上缘的区域。生肖与四神兽水印同样解除定尺。</p>
+      </description>
+    </release>
     <release version="1.4.2" date="2026-11-11">
       <description>
         <p>面板名例改刻《阴符经》句「观天之道，执天之行，尽矣！」；软件中心资讯补简介与截图。</p>
