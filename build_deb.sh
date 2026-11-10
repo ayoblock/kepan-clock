@@ -1,10 +1,10 @@
 #!/bin/sh
 # 刻盘钟 deb 打包脚本
-# 用法：./build_deb.sh   产物：../kepan-clock_1.4.0-1_all.deb
+# 用法：./build_deb.sh   产物：../kepan-clock_1.4.1-1_all.deb
 set -e
 cd "$(dirname "$0")"
 
-VER=1.4.0
+VER=1.4.1
 PKG=kepan-clock_${VER}-1_all
 ROOT="pkgroot/${PKG}"
 

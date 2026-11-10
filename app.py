@@ -13,6 +13,7 @@
 """
 import datetime
 import math
+import os
 import pathlib
 import shutil
 import struct
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import traceback
 import wave
 
 import gi
@@ -166,6 +168,7 @@ def compute_state(now, cfg, force_night=None):
 
 # ---------------------------------------------------------------- 报时声
 _SOUND_DIR = pathlib.Path.home() / ".config" / "kepan-clock" / "sound"
+_ERRLOG = pathlib.Path.home() / ".config" / "kepan-clock" / "error.log"
 _RATE = 22050
 _EVENTS = {  # 事件名 -> [(起点秒, 单声样), ...]
     "bell3": [(0.0, "bell"), (0.55, "bell"), (1.10, "bell")],
@@ -182,6 +185,11 @@ def _load_wav_mono(path):
         if width != 2:
             raise ValueError("仅支持 16-bit WAV")
         raw = wf.readframes(n)
+    if len(raw) < ch * n * 2:          # 文件被截断：按实有帧数解，缺帧补零
+        n = len(raw) // (ch * 2)
+        raw = raw[:n * ch * 2]
+        if n == 0:
+            raise ValueError("WAV 无有效帧")
     cnt = ch * n
     vals = struct.unpack(f"<{cnt}h", raw)
     mono = [sum(vals[i * ch:(i + 1) * ch]) / ch / 32768.0 for i in range(n)]
@@ -262,7 +270,7 @@ def _ensure_sounds():
     for kind in ("bell", "drum"):
         try:
             singles[kind] = _load_wav_mono(d / f"{kind}.wav")
-        except (wave.Error, ValueError, EOFError) as e:
+        except Exception as e:          # 解析失败一律兜合成，绝不外抛进主循环
             print(f"警告：{kind}.wav 无法解析（{e}），改用合成声样。", file=sys.stderr)
             singles[kind] = _synth_strike(kind)
     out = {}
@@ -281,24 +289,59 @@ def _ensure_sounds():
             for i, v in enumerate(seg):
                 if j0 + i < total:
                     buf[j0 + i] += v
-        _write_wav(path, buf)
+        # 先写临时文件再原子替换：热重载并发重读时不会碰到半截 WAV
+        tmp = path.with_suffix(".tmp")
+        try:
+            _write_wav(tmp, buf)
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            if not path.exists():
+                raise
         out[name] = path
     return out
 
 
-def _play(paths, name, debug=False):
+def _play(paths, name, debug=False, diag=False):
+    """起 paplay 播一声，返回 Popen 供上层 poll 回收；diag=True 时同步
+    运行一次并打印 paplay 的退出码与 stderr，用于失败诊断。"""
     if not paths or name not in paths:
         if debug:
             print(f"报时声 {name}：声样缺失，未播", file=sys.stderr)
-        return
+        return None
     try:
-        subprocess.Popen(["paplay", str(paths[name])],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if diag:
+            r = subprocess.run(["paplay", str(paths[name])], capture_output=True,
+                               text=True, timeout=10)
+            err = r.stderr.strip()
+            print(f"诊断 paplay {name}：退出码 {r.returncode}"
+                  + (f"，stderr：{err}" if err else ""), file=sys.stderr)
+            return None
+        p = subprocess.Popen(["paplay", str(paths[name])],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if debug:
             import datetime as _dt
             print(f"[{_dt.datetime.now():%H:%M:%S}] 报时：{name}", flush=True)
+        return p
     except OSError as e:
         print(f"报时声 {name}：paplay 启动失败（{e}）", file=sys.stderr)
+        return None
+
+
+def _log_error(msg=None):
+    """异常落盘到 ~/.config/kepan-clock/error.log。
+    桌面启动时 stderr 进日志系统不可见，这里保底可查；超 64 KiB 清空重记。"""
+    try:
+        _ERRLOG.parent.mkdir(parents=True, exist_ok=True)
+        if _ERRLOG.exists() and _ERRLOG.stat().st_size > 65536:
+            _ERRLOG.write_text("")
+        with open(_ERRLOG, "a") as f:
+            f.write(f"—— {datetime.datetime.now():%Y-%m-%d %H:%M:%S} ——\n")
+            if msg:
+                f.write(msg + "\n")
+            traceback.print_exc(file=f)
+    except OSError:
+        pass
 
 
 def _sound_test():
@@ -368,6 +411,8 @@ class ClockWindow(Gtk.ApplicationWindow):
         self._last_min = None
         self._sounds = None
         self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
+        self._last_play = None     # 上一发 paplay，供 poll 回收与失败计数
+        self._snd_fail = 0         # 连续失败计数：≥2 重建声样，≥6 转诊断
         self.set_default_size(960, 680)
         self.set_size_request(520, 520)
 
@@ -442,11 +487,15 @@ class ClockWindow(Gtk.ApplicationWindow):
 
     def _reload(self):
         self._reload_pending = False
-        cfg, _ = load_config()
-        self.cfg = cfg
-        self._sounds = None
-        self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
-        self.da.queue_draw()
+        try:
+            cfg, _ = load_config()
+            self.cfg = cfg
+            self._sounds = None
+            self._snd_fail = 0
+            self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
+            self.da.queue_draw()
+        except Exception:
+            _log_error("热重载失败，沿用旧配置。")
         return GLib.SOURCE_REMOVE
 
     def _schedule(self, ms=None):
@@ -457,6 +506,18 @@ class ClockWindow(Gtk.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _tick(self):
+        """每秒一跳。GLib 的 timeout 回调一旦抛异常，source 即被移除、
+        tick 链永久断掉（钟面冻结、报时失效），故整体兜底：异常落盘
+        error.log，无论如何都重挂下一跳，渲染沿用上一次状态。"""
+        anim = False
+        try:
+            anim = self._tick_body()
+        except Exception:
+            _log_error("tick 异常，本跳沿用上次状态。")
+        self._schedule(33 if anim else None)
+        return GLib.SOURCE_REMOVE
+
+    def _tick_body(self):
         now = datetime.datetime.now()
         st = compute_state(now, self.cfg, self.force_night)
         # 翻牌动画：更点文字变更时半秒翻牌
@@ -473,22 +534,49 @@ class ClockWindow(Gtk.ApplicationWindow):
             if self._last_min is not None and m != self._last_min:
                 if self._sounds is None:
                     self._sounds = _ensure_sounds()
-                for b in range(self._last_min + 1, m + 1):
+                gap = (m - self._last_min) % 1440
+                if gap > 2:
+                    # 休眠/挂起/时钟回拨：不补播历史，只评估当前一刻
+                    toks = (m,)
+                    if self._sound_debug:
+                        print(f"时间跳变 {gap} 分，跳过补播。", file=sys.stderr)
+                else:
+                    toks = range(self._last_min + 1, m + 1)
+                for b in toks:
                     u = (b + 60) % 1440
                     p = u % 120
                     if p == 0:
-                        _play(self._sounds, "bell3", self._sound_debug)
+                        self._fire("bell3")
                     elif p == 60:
-                        _play(self._sounds, "drum2", self._sound_debug)
+                        self._fire("drum2")
                     elif p % 15 == 0:
-                        _play(self._sounds, "drum1", self._sound_debug)
+                        self._fire("drum1")
             self._last_min = m
         self.st = st
         st["popup"] = self._popup
         self.da.queue_draw()
-        animating = "flip" in st or 0.0 < st["blend"] < 1.0
-        self._schedule(33 if animating else None)
-        return GLib.SOURCE_REMOVE
+        return "flip" in st or 0.0 < st["blend"] < 1.0
+
+    def _fire(self, name):
+        """触发一声，带失败自愈：poll 回收上一发 paplay；连续失败先重建
+        声样，仍败则转逐次诊断（同步取 paplay 的 stderr 打印给用户）。"""
+        if self._last_play is not None:
+            code = self._last_play.poll()   # 顺手收僵尸
+            self._last_play = None
+            if code is None:
+                return                      # 上一声还在播，不叠发
+            self._snd_fail = 0 if code == 0 else self._snd_fail + 1
+        if self._snd_fail in (2, 4):
+            print("报时声连续失败，重建声样。", file=sys.stderr)
+            self._sounds = None
+        if self._snd_fail >= 6:
+            if self._snd_fail == 6:
+                print("报时声持续失败，转入逐次诊断；请查音频输出设备。",
+                      file=sys.stderr)
+            _play(self._sounds, name, self._sound_debug, diag=True)
+            self._snd_fail += 1
+            return
+        self._last_play = _play(self._sounds, name, self._sound_debug)
 
     def _on_draw(self, area, ctx, w, h):
         st = getattr(self, "st", None)
@@ -565,13 +653,15 @@ class WallpaperWindow(Gtk.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _tick(self):
-        st = compute_state(datetime.datetime.now(), self.cfg, self.force_night)
-        self.st = st
-        self.da.queue_draw()
-        if 0.0 < st["blend"] < 1.0:
-            self._schedule(self.TICK_FADE_MS)
-        else:
-            self._schedule(self.TICK_STEADY_MS)
+        try:
+            st = compute_state(datetime.datetime.now(), self.cfg, self.force_night)
+            self.st = st
+            self.da.queue_draw()
+            ms = self.TICK_FADE_MS if 0.0 < st["blend"] < 1.0 else self.TICK_STEADY_MS
+        except Exception:
+            _log_error("壁画 tick 异常，本跳沿用上次状态。")
+            ms = self.TICK_STEADY_MS
+        self._schedule(ms)
         return GLib.SOURCE_REMOVE
 
     def _on_draw(self, area, ctx, w, h):

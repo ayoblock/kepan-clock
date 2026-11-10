@@ -1,6 +1,6 @@
 # 刻盘钟 · 司辰
 
-十二时辰盘钟的 Linux 桌面程序（1.4.0），MIT 许可。以「以天度为盘、以晷影为针」为制：
+十二时辰盘钟的 Linux 桌面程序（1.4.1），MIT 许可。以「以天度为盘、以晷影为针」为制：
 
 - **正名「刻盘钟」，铭款「司辰」，俗称「时盘」**——正名入文书，铭款刻于器，俗称行于口。
 - 主盘三重刻度：一辰三十度，初正十五度，九十六刻一刻三点七五度；辰字朱填居辰之中，午上子下、卯左酉右，晷针顺时针行。
@@ -26,10 +26,10 @@
 
 ## 安装（deb）
 
-从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.0-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
+从 [Releases](https://github.com/ayoblock/kepan-clock/releases) 下载 `kepan-clock_1.4.1-1_all.deb` 直接安装；或按「源码运行」与文末「打包」自行构建：
 
 ```sh
-sudo dpkg -i kepan-clock_1.4.0-1_all.deb
+sudo dpkg -i kepan-clock_1.4.1-1_all.deb
 sudo apt-get install -f   # 若缺依赖
 ```
 
@@ -86,6 +86,13 @@ kepan-clock --png wp.png --wallpaper --size 1920x1080    # 壁画预览图
 
 ## 疑难
 
+- **报时声（连同钟面）长期运行后停摆**：1.4.1 之前，tick 回调里任何未捕获异常都会让
+  GLib 把这条定时链整条拆掉——表现为钟面冻结、报时不再响，且从桌面启动看不到报错。
+  1.4.1 起回调整体兜底：异常写入 `~/.config/kepan-clock/error.log`（超 64 KiB 自动
+  清空重记），下一跳照常重挂，钟面用上一次状态渲染不停摆；声样改为先写临时文件再
+  原子替换，热重载并发也读不到半截 WAV；报时连续失败会自动重建声样，持续失败转逐
+  次诊断并打印 paplay 的报错；休眠唤醒只补当前一刻，不再补播错过的几十声。若你在
+  旧版遇到停摆，升级即可；排查历史异常看 `error.log`。
 - **图标不刷新**：安装后运行
   `sudo update-icon-caches /usr/share/icons/hicolor`，或注销重登一次。
   无 root 时程序图标已同步装入 `~/.local/share/icons/hicolor`，运行
@@ -156,7 +163,7 @@ kepan_clock/
 ## 打包
 
 ```sh
-sh build_deb.sh      # 产物：../kepan-clock_1.4.0-1_all.deb
+sh build_deb.sh      # 产物：../kepan-clock_1.4.1-1_all.deb
 ```
 
 需 `dpkg-deb`（`dpkg-dev` 包）。脚本按 `pkgroot/` 组织目录树、写 control 与 postinst、
