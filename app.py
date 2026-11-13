@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-"""刻盘钟·主程序（1.5.0）
+"""刻盘钟·主程序（1.5.2）
 用法：
   kepan-clock                正常启动（GTK4 窗口，单实例）
   kepan-clock --day|--night  锁定昼盘／夜盘启动
@@ -242,43 +242,15 @@ def compute_state(now, cfg, force_night=None):
 _SOUND_DIR = pathlib.Path.home() / ".config" / "kepan-clock" / "sound"
 _ERRLOG = pathlib.Path.home() / ".config" / "kepan-clock" / "error.log"
 _RATE = 22050
-_EVENTS = {  # 事件名 -> [(起点秒, 单声样), ...]
-    "bell3": [(0.0, "bell"), (0.55, "bell"), (1.10, "bell")],
-    "drum2": [(0.0, "drum"), (0.42, "drum")],
-    "drum1": [(0.0, "drum")],
+# 1.5.2 起改为运行时串行播放单声样，不再把多声预混进一个事件音：
+# 事件名 -> 单声样序列；每声待上一声播完、再留 _STRIKE_GAP 静默后起。
+_EVENTS = {
+    "bell3": ("bell", "bell", "bell"),
+    "drum2": ("drum", "drum"),
+    "drum1": ("drum",),
 }
-
-
-def _load_wav_mono(path):
-    """读 16-bit WAV（单/立体声、任意采样率），转单声道 22050，返回 list[float]。"""
-    with wave.open(str(path), "rb") as wf:
-        ch, width, rate, n = (wf.getnchannels(), wf.getsampwidth(),
-                              wf.getframerate(), wf.getnframes())
-        if width != 2:
-            raise ValueError("仅支持 16-bit WAV")
-        raw = wf.readframes(n)
-    if len(raw) < ch * n * 2:          # 文件被截断：按实有帧数解，缺帧补零
-        n = len(raw) // (ch * 2)
-        raw = raw[:n * ch * 2]
-        if n == 0:
-            raise ValueError("WAV 无有效帧")
-    cnt = ch * n
-    vals = struct.unpack(f"<{cnt}h", raw)
-    mono = [sum(vals[i * ch:(i + 1) * ch]) / ch / 32768.0 for i in range(n)]
-    if rate == _RATE:
-        return mono
-    # 线性插值重采样
-    out_n = int(n * _RATE / rate)
-    out = []
-    for i in range(out_n):
-        pos = i * rate / _RATE
-        j = int(pos)
-        if j + 1 >= n:
-            out.append(mono[n - 1])
-        else:
-            frac = pos - j
-            out.append(mono[j] * (1.0 - frac) + mono[j + 1] * frac)
-    return out
+_STRIKE_GAP = 0.20         # 声间留白（秒），自上一声播完起算
+_STRIKE_POLL_MS = 20       # 播放完成轮询粒度（毫秒）
 
 
 def _write_wav(path, samples):
@@ -309,27 +281,25 @@ def _synth_strike(kind):
 
 
 def _ensure_sounds():
-    """备齐三件报时声于 ~/.config/kepan-clock/sound/。
-    单声样来源依次：用户自备 bell.wav/drum.wav > 随包实录 > 合成；
-    事件声（bell3/drum2/drum1）由单声样组装，源更新即重建。缺 paplay 则不可用。"""
+    """备齐单声样于 ~/.config/kepan-clock/sound/，返回 {kind: path}。
+    来源依次：用户自备 bell.wav/drum.wav > 随包实录 > 合成兜底。
+    1.5.2 起报时由 _StrikeQueue 运行时串行播放，不再预合成事件音；
+    换自备声样即时生效，无需删除旧文件或重启。缺 paplay 则不可用。"""
     if not shutil.which("paplay"):
         return None
     d = _SOUND_DIR
     d.mkdir(parents=True, exist_ok=True)
     system = _HERE / "sounds"
-    # 单声样就位
-    src_mtime = {}
+    out = {}
     for kind in ("bell", "drum"):
         dst = d / f"{kind}.wav"
-        if dst.exists():
-            src_mtime[kind] = dst.stat().st_mtime
-            continue
-        cand = system / f"{kind}.wav"
-        if cand.exists():
-            shutil.copyfile(cand, dst)
-        else:
-            _write_wav(dst, _synth_strike(kind))
-        src_mtime[kind] = dst.stat().st_mtime
+        if not dst.exists():
+            cand = system / f"{kind}.wav"
+            if cand.exists():
+                shutil.copyfile(cand, dst)
+            else:
+                _write_wav(dst, _synth_strike(kind))
+        out[kind] = dst
     try:
         with open(d / "声样来源.txt", "w") as f:
             note = system / "声样来源.txt"
@@ -337,67 +307,100 @@ def _ensure_sounds():
                 f.write(note.read_text())
     except OSError:
         pass
-    # 组装事件声
-    singles = {}
-    for kind in ("bell", "drum"):
-        try:
-            singles[kind] = _load_wav_mono(d / f"{kind}.wav")
-        except Exception as e:          # 解析失败一律兜合成，绝不外抛进主循环
-            print(f"警告：{kind}.wav 无法解析（{e}），改用合成声样。", file=sys.stderr)
-            singles[kind] = _synth_strike(kind)
-    out = {}
-    for name, strikes in _EVENTS.items():
-        path = d / f"{name}.wav"
-        newest = max(src_mtime[k] for _, k in strikes)
-        if path.exists() and path.stat().st_mtime >= newest:
-            out[name] = path
-            continue
-        longest = max(len(singles[k]) for _, k in strikes)
-        total = int(_RATE * (max(t0 for t0, _ in strikes) + longest / _RATE)) + 64
-        buf = [0.0] * total
-        for t0, kind in strikes:
-            seg = singles[kind]
-            j0 = int(t0 * _RATE)
-            for i, v in enumerate(seg):
-                if j0 + i < total:
-                    buf[j0 + i] += v
-        # 先写临时文件再原子替换：热重载并发重读时不会碰到半截 WAV
-        tmp = path.with_suffix(".tmp")
-        try:
-            _write_wav(tmp, buf)
-            os.replace(tmp, path)
-        except OSError:
-            tmp.unlink(missing_ok=True)
-            if not path.exists():
-                raise
-        out[name] = path
     return out
 
 
-def _play(paths, name, debug=False, diag=False):
-    """起 paplay 播一声，返回 Popen 供上层 poll 回收；diag=True 时同步
-    运行一次并打印 paplay 的退出码与 stderr，用于失败诊断。"""
-    if not paths or name not in paths:
+def _play_strike(paths, kind, debug=False, diag=False):
+    """起 paplay 播一记单声样，返回 Popen 供上层轮询回收；diag=True 时
+    同步运行一次并打印退出码与 stderr，用于持续失败时的诊断。"""
+    if not paths or kind not in paths:
         if debug:
-            print(f"报时声 {name}：声样缺失，未播", file=sys.stderr)
+            print(f"报时声 {kind}：声样缺失，未播", file=sys.stderr)
         return None
     try:
         if diag:
-            r = subprocess.run(["paplay", str(paths[name])], capture_output=True,
+            r = subprocess.run(["paplay", str(paths[kind])], capture_output=True,
                                text=True, timeout=10)
             err = r.stderr.strip()
-            print(f"诊断 paplay {name}：退出码 {r.returncode}"
+            print(f"诊断 paplay {kind}：退出码 {r.returncode}"
                   + (f"，stderr：{err}" if err else ""), file=sys.stderr)
             return None
-        p = subprocess.Popen(["paplay", str(paths[name])],
+        p = subprocess.Popen(["paplay", str(paths[kind])],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if debug:
             import datetime as _dt
-            print(f"[{_dt.datetime.now():%H:%M:%S}] 报时：{name}", flush=True)
+            print(f"[{_dt.datetime.now():%H:%M:%S}] 报时：{kind}", flush=True)
         return p
     except OSError as e:
-        print(f"报时声 {name}：paplay 启动失败（{e}）", file=sys.stderr)
+        print(f"报时声 {kind}：paplay 启动失败（{e}）", file=sys.stderr)
         return None
+
+
+class _StrikeQueue:
+    """报时声串行队列（1.5.2）。
+
+    paplay 会把音频 drain 完才退出（本机实测：1.0 s 音样，进程存活
+    1.11 s；随包 bell.wav 3.00 s、drum.wav 1.50 s）。故以子进程退出
+    为「播放完成」事件：上一声退出后隔 _STRIKE_GAP 再起下一声，不依赖
+    任何硬编码音效时长，换任意长度的自备声样都不重叠。全程走 GLib 主
+    循环轮询，不阻塞界面。
+    """
+
+    def __init__(self, get_paths, rebuild, get_debug):
+        self._get_paths = get_paths
+        self._rebuild = rebuild
+        self._get_debug = get_debug
+        self._seq = []
+        self._running = False
+        self._fail = 0
+
+    def fire(self, kinds):
+        if not kinds or self._running:
+            return False                    # 空序列或上一轮未完，不叠发
+        if self._fail >= 6:
+            if self._fail == 6:
+                print("报时声持续失败，转入逐次诊断；请查音频输出设备。",
+                      file=sys.stderr)
+            self._fail += 1
+            _play_strike(self._get_paths(), kinds[0], self._get_debug(),
+                         diag=True)
+            return False
+        self._seq = list(kinds)
+        self._running = True
+        self._step()
+        return True
+
+    def reset_fail(self):
+        self._fail = 0
+
+    def _step(self):
+        if not self._seq:
+            self._running = False
+            return GLib.SOURCE_REMOVE
+        kind = self._seq.pop(0)
+        p = _play_strike(self._get_paths(), kind, self._get_debug())
+        if p is None:
+            self._seq = []
+            self._running = False
+            return GLib.SOURCE_REMOVE
+        GLib.timeout_add(_STRIKE_POLL_MS, self._wait_done, p)
+        return GLib.SOURCE_REMOVE
+
+    def _wait_done(self, p):
+        if p.poll() is None:
+            return GLib.SOURCE_CONTINUE     # 仍在播，继续等
+        if p.returncode == 0:
+            self._fail = 0
+        else:
+            self._fail += 1
+            if self._fail in (2, 4):
+                print("报时声连续失败，重建声样。", file=sys.stderr)
+                self._rebuild()
+        if self._seq:
+            GLib.timeout_add(int(_STRIKE_GAP * 1000), self._step)
+        else:
+            self._running = False
+        return GLib.SOURCE_REMOVE
 
 
 def _log_error(msg=None):
@@ -417,7 +420,7 @@ def _log_error(msg=None):
 
 
 def _sound_test():
-    """--sound-test：立即播一声钟并打印全链路诊断。"""
+    """--sound-test：按运行时节律串行播钟三下，逐声打印全链路诊断。"""
     if not shutil.which("paplay"):
         print("诊断：未找到 paplay。请安装 pulseaudio-utils。", file=sys.stderr)
         return 1
@@ -427,16 +430,33 @@ def _sound_test():
         return 1
     print("声样就绪：")
     for k, v in sounds.items():
-        print(f"  {k} -> {v}")
-    r = subprocess.run(["paplay", str(sounds["bell3"])], capture_output=True,
-                       text=True, timeout=10)
-    if r.returncode == 0:
-        print("paplay 退出码 0——刚才应已闻钟声三下。"
-              "若耳中无声，请查系统音量与输出设备。")
-        return 0
-    print(f"paplay 失败（退出码 {r.returncode}）：{r.stderr.strip()}",
-          file=sys.stderr)
-    return 1
+        try:
+            with wave.open(str(v), "rb") as wf:
+                dur = wf.getnframes() / wf.getframerate()
+            note = f"（{dur:.2f}s）"
+        except Exception:
+            note = "（时长未知）"
+        print(f"  {k} -> {v}{note}")
+    print(f"节律：播完一声，留白 {_STRIKE_GAP:.2f}s，再起下一声；共三声。")
+    bad = 0
+    for i in range(3):
+        t0 = time.monotonic()
+        r = subprocess.run(["paplay", str(sounds["bell"])], capture_output=True,
+                           text=True, timeout=15)
+        dt = time.monotonic() - t0
+        err = r.stderr.strip()
+        print(f"第 {i + 1} 声：退出码 {r.returncode}，进程存活 {dt:.2f}s"
+              + (f"，stderr：{err}" if err else ""))
+        if r.returncode != 0:
+            bad += 1
+        if i < 2:
+            time.sleep(_STRIKE_GAP)
+    if bad:
+        print(f"{bad} 声失败，请查音频输出设备与 paplay 报错。",
+              file=sys.stderr)
+        return 1
+    print("三声播完——若耳中无声，请查系统音量与输出设备。")
+    return 0
 
 
 # ---------------------------------------------------------------- 篆体自检
@@ -483,8 +503,9 @@ class ClockWindow(Gtk.ApplicationWindow):
         self._last_min = None
         self._sounds = None
         self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
-        self._last_play = None     # 上一发 paplay，供 poll 回收与失败计数
-        self._snd_fail = 0         # 连续失败计数：≥2 重建声样，≥6 转诊断
+        self._strikes = _StrikeQueue(self._sound_paths,
+                                     lambda: setattr(self, "_sounds", None),
+                                     lambda: self._sound_debug)
         self._alpha_drag = False   # 淡度滑轨拖动中：只改内存，松手落盘
         self._toast = None         # (文字, 失效时刻)
         self._seal_note = ("款识：篆书生效中"
@@ -691,7 +712,7 @@ class ClockWindow(Gtk.ApplicationWindow):
             cfg, _ = load_config()
             self.cfg = cfg
             self._sounds = None
-            self._snd_fail = 0
+            self._strikes.reset_fail()
             self._sound_debug = bool(cfg.get("sound", {}).get("debug", False))
             self._seal_note = ("款识：篆书生效中"
                                if seal_effective(cfg["fonts"]["seal"])
@@ -735,8 +756,6 @@ class ClockWindow(Gtk.ApplicationWindow):
         if self.cfg["sound"]["enabled"]:
             m = int(st["t_min"])
             if self._last_min is not None and m != self._last_min:
-                if self._sounds is None:
-                    self._sounds = _ensure_sounds()
                 gap = (m - self._last_min) % 1440
                 if gap > 2:
                     # 休眠/挂起/时钟回拨：不补播历史，只评估当前一刻
@@ -761,26 +780,15 @@ class ClockWindow(Gtk.ApplicationWindow):
         self.da.queue_draw()
         return "flip" in st or 0.0 < st["blend"] < 1.0
 
+    def _sound_paths(self):
+        """声样路径惰性准备；热重载或失败重建后由下一声自动补齐。"""
+        if self._sounds is None:
+            self._sounds = _ensure_sounds()
+        return self._sounds
+
     def _fire(self, name):
-        """触发一声，带失败自愈：poll 回收上一发 paplay；连续失败先重建
-        声样，仍败则转逐次诊断（同步取 paplay 的 stderr 打印给用户）。"""
-        if self._last_play is not None:
-            code = self._last_play.poll()   # 顺手收僵尸
-            self._last_play = None
-            if code is None:
-                return                      # 上一声还在播，不叠发
-            self._snd_fail = 0 if code == 0 else self._snd_fail + 1
-        if self._snd_fail in (2, 4):
-            print("报时声连续失败，重建声样。", file=sys.stderr)
-            self._sounds = None
-        if self._snd_fail >= 6:
-            if self._snd_fail == 6:
-                print("报时声持续失败，转入逐次诊断；请查音频输出设备。",
-                      file=sys.stderr)
-            _play(self._sounds, name, self._sound_debug, diag=True)
-            self._snd_fail += 1
-            return
-        self._last_play = _play(self._sounds, name, self._sound_debug)
+        """触发一次报时：按 _EVENTS 序列串行播放，播完一声再起下一声。"""
+        self._strikes.fire(_EVENTS.get(name, ()))
 
     def _on_draw(self, area, ctx, w, h):
         st = getattr(self, "st", None)

@@ -32,6 +32,11 @@
   <url type="homepage">https://github.com/ayoblock/kepan-clock</url>
   <url type="bugtracker">https://github.com/ayoblock/kepan-clock/issues</url>
   <releases>
+    <release version="1.5.2" date="2026-11-13">
+      <description>
+        <p>修复报时三声过快：原先把三声按硬编码 0.55 秒间隔预混进一个事件音，而随包钟声长 3.00 秒，三声严重重叠。1.5.2 起改为运行时串行播放单声样，以 paplay 退出为「播放完成」事件，播完一声留白 0.20 秒再起下一声；换任意长度的自备声样都不再重叠。</p>
+      </description>
+    </release>
     <release version="1.5.1" date="2026-11-11">
       <description>
         <p>右列重排：司辰小印上移与读数同行居前，「天行」字印入主原朱印位并放大为设置入口；右列底缘即副盘底，无悬挂元素，矮窗不再裁切，缩放下限放宽。</p>
