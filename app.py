@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-"""刻盘钟·主程序（1.5.2）
+"""刻盘钟·主程序（1.5.3）
 用法：
   kepan-clock                正常启动（GTK4 窗口，单实例）
   kepan-clock --day|--night  锁定昼盘／夜盘启动
@@ -208,11 +208,25 @@ def compute_state(now, cfg, force_night=None):
 
     rise, sett = sun.sun_times_local(now.date(), lat, lon, tz)
     span = sun.night_span(t_min, lat, lon, tz, now=now, dusk=dusk)
-    night = sun.is_night(t_min, rise, sett) if force_night is None else force_night
 
-    # 昼夜渐变：距日出或日落三十秒内线性过渡
+    # 昼夜优先级：CLI --day/--night > 配置 mode.theme > 日出日落。
+    # 1.5.2 及之前此处从不读 mode.theme——该值只用来画设置牌窗的选中态，
+    # 故「常昼／常夜」点了选中态变、盘面不变（1.5.3 修复）。
+    theme = str(cfg.get("mode", {}).get("theme", "auto")).strip().lower()
+    locked = theme in ("day", "night")
+    if force_night is not None:
+        night = force_night
+    elif theme == "day":
+        night = False
+    elif theme == "night":
+        night = True
+    else:                                # auto 或未知值：依日出日落兜底
+        night = sun.is_night(t_min, rise, sett)
+
+    # 昼夜渐变：仅 auto 时，距日出或日落三十秒内线性过渡；锁定主题不叠加，
+    # 否则「常昼」在日落瞬间仍会透出夜色。CLI 强制的既有行为不变。
     blend = 1.0 if night else 0.0
-    if rise is not None and sett is not None:
+    if not locked and rise is not None and sett is not None:
         win_min = _CROSSFADE_S / 60.0
         for boundary, going_night in ((sett, True), (rise, False)):
             signed = ((t_min - boundary + 720.0) % 1440.0) - 720.0

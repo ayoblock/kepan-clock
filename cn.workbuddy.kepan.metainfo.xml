@@ -32,6 +32,11 @@
   <url type="homepage">https://github.com/ayoblock/kepan-clock</url>
   <url type="bugtracker">https://github.com/ayoblock/kepan-clock/issues</url>
   <releases>
+    <release version="1.5.3" date="2026-11-14">
+      <description>
+        <p>修复设置牌窗「昼夜」三选不起作用：原先 mode.theme 只用于绘制选中态，状态计算从未读取该值，故点击后选中态变而盘面不变。1.5.3 起 compute_state 按「命令行强制 > 配置主题 > 日出日落」决定昼夜，锁定主题不被三十秒过渡覆盖。</p>
+      </description>
+    </release>
     <release version="1.5.2" date="2026-11-13">
       <description>
         <p>修复报时三声过快：原先把三声按硬编码 0.55 秒间隔预混进一个事件音，而随包钟声长 3.00 秒，三声严重重叠。1.5.2 起改为运行时串行播放单声样，以 paplay 退出为「播放完成」事件，播完一声留白 0.20 秒再起下一声；换任意长度的自备声样都不再重叠。</p>
