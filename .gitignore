@@ -1,5 +1,6 @@
 # 构建产物
-pkgroot/
+packaging/pkgroot/
+dist/
 *.deb
 *.buildinfo
 *.changes
@@ -13,3 +14,6 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+
+# WorkBuddy 会话数据（本地）
+.workbuddy/

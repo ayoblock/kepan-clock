@@ -14,7 +14,8 @@ import cairo
 import dial  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
-ICONS = HERE / "icons" / "hicolor"
+ASSETS = HERE.parent / "assets"      # 仓库内资源目录（icons/、config.toml）
+ICONS = ASSETS / "icons" / "hicolor"
 SIZES = (256, 128, 64, 48, 32, 16)
 BASE = 1024           # 母版尺寸，各档由其缩放
 T_MIN = 15 * 60 + 45  # 晷针指申初一刻，与旧徽记一致
@@ -23,7 +24,7 @@ T_MIN = 15 * 60 + 45  # 晷针指申初一刻，与旧徽记一致
 def load_fonts():
     """字体链：用户配置优先，随包 config 兜底。"""
     for p in (pathlib.Path.home() / ".config" / "kepan-clock" / "config.toml",
-              HERE / "config.toml"):
+              ASSETS / "config.toml"):
         if p.exists():
             cfg = tomllib.loads(p.read_bytes().decode("utf-8"))
             f = cfg.get("fonts", {})

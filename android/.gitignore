@@ -1,0 +1,27 @@
+# 构建产物
+**/build/
+*.apk
+
+# 本地配置与签名材料（永不入库）
+local.properties
+keystore.properties
+*.jks
+
+# IDE
+.idea/
+*.iml
+
+# 临时探针与截图
+.tmp/
+tmp/
+docs/shots/
+__pycache__/
+
+# Gradle 本地缓存
+.gradle/
+
+# WorkBuddy 数据
+.workbuddy/
+
+# dist 中交付的 APK 由 stageRelease 管理，单独排除
+dist/

@@ -1,14 +1,16 @@
 #!/bin/sh
 # 刻盘钟 deb 打包脚本
-# 用法：./build_deb.sh   产物：../kepan-clock_1.5.3-1_all.deb
+# 用法：sh packaging/build_deb.sh   产物：dist/kepan-clock_1.5.3-1_all.deb
 set -e
-cd "$(dirname "$0")"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
 VER=1.5.3
 PKG=kepan-clock_${VER}-1_all
-ROOT="pkgroot/${PKG}"
+PKGROOT="packaging/pkgroot"
+ROOT="${PKGROOT}/${PKG}"
 
-rm -rf pkgroot
+rm -rf "${PKGROOT}"
 mkdir -p "${ROOT}/DEBIAN" \
          "${ROOT}/usr/bin" \
          "${ROOT}/usr/share/kepan-clock" \
@@ -48,11 +50,12 @@ exec /usr/bin/python3 /usr/share/kepan-clock/app.py "$@"
 EOF
 chmod 755 "${ROOT}/usr/bin/kepan-clock"
 
-# ---- 程序文件 ----
-install -m 644 chen_core.py sun.py lunar.py lunar_data.py dial.py app.py \
-        config.toml README.md "${ROOT}/usr/share/kepan-clock/"
+# ---- 程序文件（安装后扁平布局，app.py 的 _DATA 回退同目录）----
+install -m 644 src/chen_core.py src/sun.py src/lunar.py src/lunar_data.py \
+        src/dial.py src/app.py assets/config.toml docs/README.md \
+        "${ROOT}/usr/share/kepan-clock/"
 # ---- 实录声样（随包，首次运行复制到 ~/.config/kepan-clock/sound/）----
-cp sounds/bell.wav sounds/drum.wav sounds/声样来源.txt \
+cp assets/sounds/bell.wav assets/sounds/drum.wav assets/sounds/声样来源.txt \
    "${ROOT}/usr/share/kepan-clock/sounds/"
 
 # ---- .desktop ----
@@ -72,7 +75,7 @@ EOF
 
 # ---- AppStream 元数据（软件中心资讯：简介/描述/截图）----
 install -d "${ROOT}/usr/share/metainfo"
-install -m 644 cn.workbuddy.kepan.metainfo.xml \
+install -m 644 packaging/cn.workbuddy.kepan.metainfo.xml \
         "${ROOT}/usr/share/metainfo/"
 
 # ---- 壁画模式桌面项 ----
@@ -91,11 +94,11 @@ Keywords=wallpaper;clock;shichen;壁画;刻盘钟;
 DESK
 
 # ---- 图标 ----
-cp -r icons/hicolor/* "${ROOT}/usr/share/icons/hicolor/"
+cp -r assets/icons/hicolor/* "${ROOT}/usr/share/icons/hicolor/"
 
 # ---- man 手册页 ----
 mkdir -p "${ROOT}/usr/share/man/man1"
-gzip -9 -c kepan-clock.1 > "${ROOT}/usr/share/man/man1/kepan-clock.1.gz"
+gzip -9 -c docs/kepan-clock.1 > "${ROOT}/usr/share/man/man1/kepan-clock.1.gz"
 
 # ---- postinst：装后刷新图标缓存 ----
 cat > "${ROOT}/DEBIAN/postinst" <<'EOF'
@@ -111,7 +114,7 @@ EOF
 chmod 755 "${ROOT}/DEBIAN/postinst"
 
 # ---- 文档 ----
-cp README.md "${ROOT}/usr/share/doc/kepan-clock/README.md"
+cp docs/README.md "${ROOT}/usr/share/doc/kepan-clock/README.md"
 cat > "${ROOT}/usr/share/doc/kepan-clock/copyright" <<'EOF'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: kepan-clock
@@ -125,6 +128,7 @@ License: MIT
 EOF
 
 # ---- 打包 ----
-dpkg-deb --build --root-owner-group "${ROOT}" ../"${PKG}".deb
-dpkg-deb --info "../${PKG}.deb" | head -20
-echo "—— 产物：$(cd .. && pwd)/${PKG}.deb"
+mkdir -p dist
+dpkg-deb --build --root-owner-group "${ROOT}" "dist/${PKG}.deb"
+dpkg-deb --info "dist/${PKG}.deb" | head -20
+echo "—— 产物：${ROOT_DIR}/dist/${PKG}.deb"

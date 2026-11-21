@@ -36,6 +36,10 @@ from chen_core import animal, read_str  # noqa: E402
 
 _TITLE = "刻盘钟·司辰"
 _HERE = pathlib.Path(__file__).resolve().parent
+# 运行数据根：安装后与程序同目录（deb 扁平布局）；仓库内位于 ../assets/
+_DATA = next((d for d in (_HERE, _HERE.parent / "assets")
+              if (d / "config.toml").exists() or (d / "sounds").is_dir()),
+             _HERE)
 _CROSSFADE_S = 30.0            # 昼夜过渡各三十秒
 
 DEFAULT_CONFIG = {
@@ -66,7 +70,7 @@ def load_config():
     """返回 (配置, 所载文件路径或 None)。与默认值深度合并，缺段补默认。
     配置文件损坏（如编辑器写入半截）时跳过该文件回退默认，不致崩溃。"""
     paths = [pathlib.Path.home() / ".config" / "kepan-clock" / "config.toml",
-             _HERE / "config.toml"]
+             _DATA / "config.toml"]
     user = {}
     src = None
     for p in paths:
@@ -96,7 +100,7 @@ def save_cfg_value(section, key, value):
     p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists():
         try:
-            text = (_HERE / "config.toml").read_text(encoding="utf-8")
+            text = (_DATA / "config.toml").read_text(encoding="utf-8")
         except OSError:
             text = ""
         p.write_text(text, encoding="utf-8")
@@ -303,7 +307,7 @@ def _ensure_sounds():
         return None
     d = _SOUND_DIR
     d.mkdir(parents=True, exist_ok=True)
-    system = _HERE / "sounds"
+    system = _DATA / "sounds"
     out = {}
     for kind in ("bell", "drum"):
         dst = d / f"{kind}.wav"

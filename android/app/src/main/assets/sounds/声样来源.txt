@@ -1,0 +1,6 @@
+声样来源与许可
+===============
+bell.wav  「Gong or bell vibrant (short)」— CC0（公有领域贡献），维基共享资源
+drum.wav  「Bass drum」— CC BY-SA 3.0，作者 Clngre（自用无碍；若随程序再分发须附署名）
+来源：commons.wikimedia.org
+本目录文件可整件替换：放入同名 bell.wav / drum.wav（单声样，任意 16-bit WAV）即可，程序自动重组三件报时声。

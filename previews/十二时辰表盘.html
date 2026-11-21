@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>刻盘钟·司辰</title>
+<style>
+  html,body{margin:0;padding:0;background:#FBFAF6;color:#2C2C2A;}
+  body{font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC",serif;
+       display:flex;flex-direction:column;align-items:center;padding:28px 16px 48px;}
+  h1{font-size:17px;font-weight:500;letter-spacing:2px;margin:0 0 4px;}
+  p.sub{font-size:13px;color:#6B6A64;margin:0 0 18px;letter-spacing:1px;}
+  .frame{width:100%;max-width:680px;background:#FBFAF6;}
+  footer{max-width:680px;font-size:12px;line-height:1.9;color:#6B6A64;
+         margin-top:18px;border-top:1px solid #E3E0D6;padding-top:12px;}
+</style>
+</head>
+<body>
+<h1>刻盘钟 · 司辰</h1>
+<p class="sub">一辰三十度 · 一刻三点七五度 · 午上子下，顺时针行</p>
+<div class="frame">
+<svg id="dial" width="100%" viewBox="0 0 680 560" role="img" style="display:block">
+<title>刻盘钟盘面分环示意</title>
+<desc>午居上、子居下、卯居左、酉居右的十二时辰盘，外环为十二地支字，次环分初正，再次为九十六刻，内环为夜漏五更弧，盘心上方刻「司辰」款，下方为更牌窗。</desc>
+</svg>
+</div>
+<footer>
+名例：正名「刻盘钟」，铭款「司辰」，俗称「时盘」；正名入文书，铭款刻于器，俗称行于口，三场各守，不得混用。<br>
+读法：晷针所指，先看落在哪一地支字，再看该字两侧的初、正，最后数刻环上的刻线。<br>
+图为酉正三刻，更牌窗示一更一点。晷针一日一夜行一周，故机芯须二十四时制。
+</footer>
+<script>
+(function(){
+var NS="http://www.w3.org/2000/svg",s=document.getElementById("dial"),cx=270,cy=320;
+function E(t,a,x){var n=document.createElementNS(NS,t);for(var k in a)n.setAttribute(k,a[k]);if(x!=null)n.textContent=x;s.appendChild(n);return n;}
+function P(r,d){var a=(d-90)*Math.PI/180;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];}
+function L(r1,r2,d,c,w){var a=P(r1,d),b=P(r2,d);E("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:c,"stroke-width":w});}
+E("circle",{cx:cx,cy:cy,r:210,fill:"#F7F4EA",stroke:"#BA7517","stroke-width":1.4});
+[200,168,152,136,120,90].forEach(function(r){E("circle",{cx:cx,cy:cy,r:r,fill:"none",stroke:"#B4B2A9","stroke-width":0.5});});
+var z=["午","未","申","酉","戌","亥","子","丑","寅","卯","辰","巳"];
+for(var i=0;i<12;i++){
+var d=i*30;
+L(210,200,d+15,"#B4B2A9",1.1);
+L(200,120,d+15,"#B4B2A9",0.6);
+L(152,168,d,"#888780",0.6);
+var t1=P(184,d),t2=P(160,d-7.5),t3=P(160,d+7.5);
+E("text",{x:t1[0],y:t1[1],"text-anchor":"middle","dominant-baseline":"central","font-size":22,"font-weight":500,fill:"#A32D2D","font-family":"Songti SC, Noto Serif CJK SC, serif"},z[i]);
+E("text",{x:t2[0],y:t2[1],"text-anchor":"middle","dominant-baseline":"central","font-size":11,fill:"#888780","font-family":"Songti SC, serif"},"初");
+E("text",{x:t3[0],y:t3[1],"text-anchor":"middle","dominant-baseline":"central","font-size":11,fill:"#888780","font-family":"Songti SC, serif"},"正");
+}
+for(var k=0;k<96;k++){var dd=k*3.75;if(Math.abs(dd/15-Math.round(dd/15))<1e-9)continue;L(136,143,dd,"#888780",0.5);}
+for(var q=0;q<5;q++){
+var a0=90+q*36+1.2,a1=90+(q+1)*36-1.2,p0=P(128,a0),p1=P(128,a1);
+E("path",{d:"M"+p0[0]+" "+p0[1]+"A128 128 0 0 1 "+p1[0]+" "+p1[1],fill:"none",stroke:"#D3D1C7","stroke-width":7});
+var md=90+q*36+18,mp=P(128,md);
+E("circle",{cx:mp[0],cy:mp[1],r:9,fill:"#F7F4EA"});
+E("text",{x:mp[0],y:mp[1],"text-anchor":"middle","dominant-baseline":"central","font-size":11,fill:"#5F5E5A","font-family":"Songti SC, serif"},"一二三四五"[q]);
+}
+var A=101.25,p1=P(12,A),p2=P(188,A),tp=P(203,A),b1=P(186,A-2.4),b2=P(186,A+2.4);
+E("line",{x1:p1[0],y1:p1[1],x2:p2[0],y2:p2[1],stroke:"#2C2C2A","stroke-width":3,"stroke-linecap":"round"});
+E("polygon",{points:tp[0]+","+tp[1]+" "+b1[0]+","+b1[1]+" "+b2[0]+","+b2[1],fill:"#A32D2D"});
+E("circle",{cx:cx,cy:cy,r:13,fill:"#BA7517"});
+E("circle",{cx:cx,cy:cy,r:5,fill:"#F7F4EA"});
+E("text",{x:cx+1.5,y:cy-52,"text-anchor":"middle","dominant-baseline":"central","font-size":13,fill:"#6B6A64","letter-spacing":3,"font-family":"Songti SC, Noto Serif CJK SC, serif"},"司辰");
+E("text",{x:cx,y:cy+46,"text-anchor":"middle","dominant-baseline":"central","font-size":11,fill:"#888780","font-family":"Songti SC, serif"},"更牌窗");
+E("rect",{x:cx-44,y:cy+56,width:88,height:32,rx:3,fill:"#FFFFFF",stroke:"#B4B2A9","stroke-width":0.8});
+E("text",{x:cx,y:cy+72,"text-anchor":"middle","dominant-baseline":"central","font-size":13,fill:"#2C2C2A","font-family":"Songti SC, serif"},"一更一点");
+[[25,"十二时辰 三十度一辰"],[55,"初正 半辰十五度"],[82,"刻环 九十六刻"],[104,"夜漏 五更二十五点"]].forEach(function(it){
+var p=P(214,it[0]);
+E("line",{x1:p[0],y1:p[1],x2:490,y2:p[1],stroke:"#B4B2A9","stroke-width":0.5,"stroke-dasharray":"3 3"});
+E("text",{x:494,y:p[1],"dominant-baseline":"central","font-size":12,fill:"#5F5E5A","font-family":"system-ui, -apple-system, sans-serif"},it[1]);
+});
+})();
+</script>
+</body>
+</html>
