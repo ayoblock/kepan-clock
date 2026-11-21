@@ -83,9 +83,10 @@ object RenderGeometry {
         val cx = w / 2.0
         val cy = top + R
         val k = max(0.82, min(w / 412.0, 1.35))
-        // 读数行（司辰印+读数整组居中）与更牌行（窗居中），上下两行
+        // 读数行（司辰印+读数整组居中）与更牌行（窗居中），上下两行。
+        // 2026-11-22 用户反馈：更牌下移——rowGap 52k→64k，读数行与更牌窗拉开间距
         val readY = cy + R + 50.0
-        val rowGap = 52.0 * k
+        val rowGap = 64.0 * k
         val gengW = min(320.0 * k, w * 0.37)
         val gengH = 50.0 * k
         val gengY = readY + rowGap

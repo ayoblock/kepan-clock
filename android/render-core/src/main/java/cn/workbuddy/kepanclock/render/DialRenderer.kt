@@ -495,12 +495,6 @@ object DialRenderer {
         val bh = lay.gengH
         val gbx = w / 2.0 - bw / 2.0
         val gby = lay.gengY - bh / 2.0
-        Primitives.fillRoundRect(c, gx, ry - ssz / 2.0, ssz, ssz, 4.0 * k, cinnabar)
-        Primitives.text(c, gx + ssz / 2.0, ry - 6.0 * k, "司", 11.0 * k, fonts.sealAlt, Palette.argb(pal["bg"]))
-        Primitives.text(c, gx + ssz / 2.0, ry + 6.6 * k, "辰", 11.0 * k, fonts.sealAlt, Palette.argb(pal["bg"]))
-        Primitives.text(c, gx + ssz + gap + rw / 2.0, ry, st.read, 42 * k, chenF, ink)
-
-        // 第二行右：更牌窗（翻牌/试时）
         Primitives.fillRoundRect(c, gbx, gby, bw, bh, 0.0, Palette.argb(pal["bg"]))
         Primitives.strokeRoundRect(c, gbx, gby, bw, bh, 0.0, ink, 1.6 * k)
         Primitives.strokeRoundRect(c, gbx + 4 * k, gby + 4 * k, bw - 8 * k, bh - 8 * k, 0.0, faint, 0.7 * k)

@@ -30,7 +30,8 @@ import kotlinx.coroutines.launch
  * 与设置页 ComposeView 在 Activity 布局中平级。
  * P3 交互接线：
  *  - 单击 → RenderGeometry.hitTest 分发：seal（天行印，切设置页回调）/
- *    note（历注气泡）/ footer（展全月↔收三日）/ popup（保持）/ null（收气泡）。
+ *    note（历注气泡）/ footer（展全月↔收三日）/ popup（保持）/ 环带（试时态，
+ *    2026-11-22 用户拍板：单击即显，原仅长按）/ null（收气泡）。
  *  - 长按盘面环带 → 试时读数；按住移动实时更新；松手保留；下次单击清除。
  *  - 配置：collectLatest DataStore 流，改即生效（热重载）。
  */
@@ -171,8 +172,14 @@ class ClockView @JvmOverloads constructor(
             // Compose 牌窗（§9-3 拍板），popupKind 恒不为 "settings"，路径留置
             "settings" -> {}
             else -> {
-                popupKind = null
-                listener?.onClockTap()
+                // 2026-11-22 用户反馈：单击盘面环带即入试时（原仅长按激活，
+                // 用户单击无反馈）；环带外维持桌面语义（收气泡）。
+                if (RenderGeometry.hoverRead(w, h, x, y) != null) {
+                    trialPointer = x to y
+                } else {
+                    popupKind = null
+                    listener?.onClockTap()
+                }
             }
         }
         invalidate()

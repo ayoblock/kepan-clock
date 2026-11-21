@@ -175,7 +175,7 @@ class RenderGeometryTest {
         assertEquals(Math.round(lay.R).toDouble(), lay.R, 1e-9)
         // 读数行距盘底 50，居中；更牌行在读数行下方，同样居中
         assertEquals(lay.cy + lay.R + 50.0, lay.row2Y, 1e-9)
-        assertEquals(lay.row2Y + 52.0 * lay.k, lay.gengY, 1e-9)
+        assertEquals(lay.row2Y + 64.0 * lay.k, lay.gengY, 1e-9)
         assertTrue(lay.gengW > 0.0 && lay.gengH > 0.0)
         assertTrue(lay.gengW <= 412.0 * 0.37)
         // 下区在更牌行之下：左块与右副盘纵向有序，天行印与副盘都在历注之上
@@ -193,11 +193,12 @@ class RenderGeometryTest {
         assertEquals("seal", RenderGeometry.hitTest(412.0, 915.0, lay.sealX, lay.sealY, null, 6))
         val sg = RenderGeometry.settingsGeom(412.0, 915.0)
         assertTrue(sg.y >= 8.0 && sg.y + sg.bh <= 915.0 - 8.0)
-        // 示意稿锚点复核（412×867，容差 5dp）：读数 502 / 更牌 554 / infoTop 635 / 历注 815
+        // 示意稿锚点复核（412×867，容差 5dp）：读数 502 / 更牌 566 / infoTop 647 / 历注 815
+        // （2026-11-22 用户反馈：更牌下移 12dp 拉开与读数行间距，rowGap 52k→64k）
         val m = RenderGeometry.layout(412.0, 867.0)
         assertEquals(502.0, m.row2Y, 5.0)
-        assertEquals(554.0, m.gengY, 5.0)
-        assertEquals(635.0, m.infoTop, 5.0)
+        assertEquals(566.0, m.gengY, 5.0)
+        assertEquals(647.0, m.infoTop, 5.0)
         assertEquals(815.0, m.noteY, 1.0)
         // 横屏不受影响：同尺寸仍走桌面布局
         assertFalse(RenderGeometry.layout(1024.0, 640.0).portrait)
