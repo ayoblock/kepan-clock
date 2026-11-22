@@ -38,32 +38,47 @@ class RenderGeometryTest {
 
     @Test
     fun `layout 结构性断言`() {
-        // 桌面设计基准：1024×640
+        // 2026-11-23 横屏三区等间隔（示意稿 kepan-wallpaper16）：尺寸按高度取；
+        // 1024×640 空间不足触发收缩路径（s=(w-96)/total，k 随缩）
+        // rS=0.21h、R=min(0.395h,(h-72)/2)、k=min((h-40)/400,2.2)、pw=300k
+        val rS0 = 640.0 * 0.21
+        val R0 = 640.0 * 0.395
+        val k0 = (640.0 - 40.0) / 400.0
+        val s = (1024.0 - 96.0) / (2.0 * rS0 + 2.0 * R0 + 300.0 * k0)
+        val k = k0 * s
+        val rS = rS0 * s
+        val R = R0 * s
+        val pw = 300.0 * k
         val lay = RenderGeometry.layout(1024.0, 640.0)
-        // R = min((640-72)/2=284, (1024-292)/2=366) → 284
-        assertEquals(284.0, lay.R)
-        // pw = min(480, 1024*0.30=307.2) → 307.2；k = min(307.2/260, (640-60)/560=1.036, 2.2) → 1.036
-        assertEquals(307.2, lay.pw, 1e-9)
-        assertEquals((640.0 - 60.0) / 560.0, lay.k, 1e-9)
-        // 盘心在面板左侧，面板起点 = 盘心 + R + 28
-        assertEquals(lay.cx + lay.R + 28.0, lay.px, 1e-9)
-        // 锚点即历注行下缘中心
+        assertEquals(R, lay.R, 1e-9)
+        assertEquals(pw, lay.pw, 1e-9)
+        assertEquals(k, lay.k, 1e-9)
+        assertFalse(lay.portrait)
+        // 等间隔：左缘 / 副盘→主盘 / 主盘→面板 / 右缘 四距全等
+        val gap = (1024.0 - (2.0 * rS + 2.0 * R + pw)) / 4.0
+        assertEquals(gap, lay.sideCx - lay.sideR, 1e-9)
+        assertEquals(gap, lay.cx - lay.R - (lay.sideCx + lay.sideR), 1e-9)
+        assertEquals(gap, lay.px - (lay.cx + lay.R), 1e-9)
+        assertEquals(gap, 1024.0 - (lay.px + lay.pw), 1e-9)
+        // 副盘与主盘同水平线（0.53h），面板锚点即历注行下缘中心
+        assertEquals(640.0 * 0.53, lay.sideCy, 1e-9)
+        assertEquals(640.0 * 0.53, lay.cy, 1e-9)
         assertEquals(lay.px + lay.pw / 2.0, lay.anchorX, 1e-9)
         assertEquals(lay.py0 + RenderGeometry.NOTE_Y * lay.k + 12.0 * lay.k, lay.anchorY, 1e-9)
     }
 
     @Test
     fun `popupGeom 四向避让`() {
-        val lay = RenderGeometry.layout(1024.0, 640.0)
-        // 三日气泡 POP_W=320，1024 宽窗下 down 通常可行；
-        // bw = max(POP_W*k, pw*1.14)——本窗 pw*1.14=350.2 > 320*k=331.4，取后者（桌面同式）
-        val g3 = RenderGeometry.popupGeom(1024.0, 640.0, lay, isMonth = false, monthRows = 6)
-        assertEquals("down", g3.side)
-        assertEquals(maxOf(RenderGeometry.POP_W * lay.k, lay.pw * 1.14), g3.bw, 1e-9)
-        assertEquals(RenderGeometry.POP_H3 * lay.k, g3.bh, 1e-9)
+        // 真机横屏 1600×720：面板锚点低位，三日气泡向上弹（down 超窗下缘）；
+        // bw = max(POP_W*k, pw*1.14)（桌面同式）
+        val layL = RenderGeometry.layout(1600.0, 720.0)
+        val g3 = RenderGeometry.popupGeom(1600.0, 720.0, layL, isMonth = false, monthRows = 6)
+        assertEquals("up", g3.side)
+        assertEquals(maxOf(RenderGeometry.POP_W * layL.k, layL.pw * 1.14), g3.bw, 1e-9)
+        assertEquals(RenderGeometry.POP_H3 * layL.k, g3.bh, 1e-9)
         // 整月历更高（6 行：56+180+44=280*k）
-        val gm = RenderGeometry.popupGeom(1024.0, 640.0, lay, isMonth = true, monthRows = 6)
-        assertEquals((56.0 + 30.0 * 6 + 44.0) * lay.k, gm.bh, 1e-9)
+        val gm = RenderGeometry.popupGeom(1600.0, 720.0, layL, isMonth = true, monthRows = 6)
+        assertEquals((56.0 + 30.0 * 6 + 44.0) * layL.k, gm.bh, 1e-9)
         // 极窄窗：四向皆不容 → 钳制于窗内且不越界
         val gs = RenderGeometry.popupGeom(300.0, 200.0, RenderGeometry.layout(300.0, 200.0), isMonth = true, monthRows = 6)
         assertTrue(gs.x >= 8.0 && gs.x + gs.bw <= 300.0 - 8.0 + 1e-9)
@@ -87,8 +102,9 @@ class RenderGeometryTest {
 
     @Test
     fun `hitTest 全路径`() {
-        val w = 1024.0
-        val h = 640.0
+        // 真机横屏 1600×720（2026-11-23 三区等间隔布局）
+        val w = 1600.0
+        val h = 720.0
         val lay = RenderGeometry.layout(w, h)
         // 无气泡时点印 → seal
         assertEquals("seal", RenderGeometry.hitTest(w, h, lay.sealX, lay.sealY, null, 6))
@@ -102,9 +118,9 @@ class RenderGeometryTest {
             "settings",
             RenderGeometry.hitTest(w, h, sg0.x + sg0.bw - 4.0, sg0.y + sg0.bh - 6.0, "settings", 6),
         )
-        // 设置牌窗展开时点印位：印位在牌窗外（牌窗自印上方展开），与桌面同逻辑
-        // 落入三日气泡几何 → "popup"（桌面 dial.py hit_test 同值，1:1 对齐）
-        assertEquals("popup", RenderGeometry.hitTest(w, h, lay.sealX, lay.sealY, "settings", 6))
+        // 设置牌窗展开时点印位：新横屏几何下印位在牌窗与气泡几何之外 → null
+        //（桌面同点位语义为「落入三日气泡」，横屏面板低位后气泡上弹不再覆盖印位）
+        assertNull(RenderGeometry.hitTest(w, h, lay.sealX, lay.sealY, "settings", 6))
         // 设置牌窗内 chip 命中 → set:theme:day
         val sg = RenderGeometry.settingsGeom(w, h)
         val dayChip = sg.chips["theme:day"]!!

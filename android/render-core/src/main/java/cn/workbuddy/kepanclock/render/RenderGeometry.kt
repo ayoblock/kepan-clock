@@ -116,17 +116,28 @@ object RenderGeometry {
         )
     }
 
-    /** 横屏：桌面构图（左盘右面板）。 */
+    /** 横屏三区（2026-11-23 示意稿 kepan-wallpaper16）：左八刻副盘、中主盘、
+     *  右面板。尺寸按高度取（副盘 r=0.21h、主盘 R≤0.395h、面板设计宽 300k），
+     *  再以等间隔 g 均布整组（含左右边距，共 4 个等距 g）并整体居中——
+     *  三个区域各自水平居中于其槽位，相邻间隔与边距全部相等。 */
     private fun layoutLandscape(w: Double, h: Double): Layout {
-        val R = max(60.0, min((h - 72.0) / 2.0, (w - 292.0) / 2.0))
-        val pw = max(200.0, min(480.0, w * 0.30))
-        val k = max(0.78, min(min(pw / 260.0, (h - 60.0) / PANEL_H), 2.2))
-        val contentW = 2.0 * R + 28.0 + pw
-        val xLeft = max(0.0, (w - contentW) / 2.0)
-        val cx = xLeft + R
-        val cy = h / 2.0
-        val px = cx + R + 28.0
-        val py0 = max(30.0, (h - PANEL_H * k) / 2.0)
+        val rS = h * 0.21
+        val R = max(60.0, min(h * 0.395, (h - 72.0) / 2.0))
+        val k = max(0.78, min((h - 40.0) / 400.0, 2.2))
+        val pw = 300.0 * k
+        val total = 2.0 * rS + 2.0 * R + pw
+        // 空间不足（4×24dp 最小间隔放不下）时整体等比收缩，k 同步缩保持面板不出框
+        if (total + 96.0 > w) {
+            val s = (w - 96.0) / total
+            val k2 = max(0.55, k * s)
+            return layoutShrunk(w, h, rS * s, R * s, 300.0 * k2, k2)
+        }
+        val gap = (w - total) / 4.0
+        val sideCx = gap + rS
+        val cx = 2.0 * gap + 2.0 * rS + R
+        val px = 3.0 * gap + 2.0 * rS + 2.0 * R
+        val cy = h * 0.53
+        val py0 = max(12.0, (h - 400.0 * k) / 2.0)
         val ny = py0 + NOTE_Y * k
         val scx = px + pw / 2.0
         val scy = py0 + (SEAL_Y + 25.0) * k
@@ -134,7 +145,29 @@ object RenderGeometry {
             R = R, pw = pw, k = k, cx = cx, cy = cy, px = px, py0 = py0, noteY = ny,
             sealX = scx, sealY = scy,
             noteRect = doubleArrayOf(px + 4.0 * k, ny - 12.0 * k, pw - 8.0 * k, 24.0 * k),
-            anchorX = px + pw / 2.0, anchorY = ny + 12.0 * k,
+            anchorX = scx, anchorY = ny + 12.0 * k,
+            sideCx = sideCx, sideCy = cy, sideR = rS,
+        )
+    }
+
+    /** layoutLandscape 收缩路径：k 已随等比因子缩定，按收缩后参数直接布位。 */
+    private fun layoutShrunk(w: Double, h: Double, rS: Double, R: Double, pw: Double, k: Double): Layout {
+        val total = 2.0 * rS + 2.0 * R + pw
+        val gap = (w - total) / 4.0
+        val sideCx = gap + rS
+        val cx = 2.0 * gap + 2.0 * rS + R
+        val px = 3.0 * gap + 2.0 * rS + 2.0 * R
+        val cy = h * 0.53
+        val py0 = max(12.0, (h - 400.0 * k) / 2.0)
+        val ny = py0 + NOTE_Y * k
+        val scx = px + pw / 2.0
+        val scy = py0 + (SEAL_Y + 25.0) * k
+        return Layout(
+            R = R, pw = pw, k = k, cx = cx, cy = cy, px = px, py0 = py0, noteY = ny,
+            sealX = scx, sealY = scy,
+            noteRect = doubleArrayOf(px + 4.0 * k, ny - 12.0 * k, pw - 8.0 * k, 24.0 * k),
+            anchorX = scx, anchorY = ny + 12.0 * k,
+            sideCx = sideCx, sideCy = cy, sideR = rS,
         )
     }
 

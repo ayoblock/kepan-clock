@@ -338,6 +338,8 @@ object DialRenderer {
         c: Canvas, x: Double, y: Double, w: Double, st: SceneState,
         pal: Palette, fonts: Primitives.Fonts, k: Double = 1.0,
         sealPos: Pair<Double, Double>? = null,
+        sidePos: Pair<Double, Double>? = null,
+        sideROver: Double? = null,
     ) {
         val chenF = fonts.chen
         val seal = fonts.seal
@@ -347,7 +349,7 @@ object DialRenderer {
         val cinnabar = Palette.argb(pal["cinnabar"])
         val gold = Palette.argb(pal["gold"])
         val cx = x + w / 2.0
-        val sideR = minOf(76.0 * k, w * 0.30)
+        val sideR = sideROver ?: minOf(76.0 * k, w * 0.30)
 
         val wm = st.watermark
         if (wm != null && wm != "chen") {
@@ -448,8 +450,12 @@ object DialRenderer {
         // 名例一行
         Primitives.text(c, cx, y + RenderGeometry.NAME_Y * k, "观天之道，执天之行，尽矣！", 11 * k, chenF, faint)
 
-        // 八刻副盘
-        dialSide(c, cx, y + RenderGeometry.SIDE_Y * k, sideR, st, pal, fonts)
+        // 八刻副盘：sidePos 非空时画在面板外（横屏左带），否则面板内嵌（桌面式）
+        if (sidePos != null) {
+            dialSide(c, sidePos.first, sidePos.second, sideR, st, pal, fonts)
+        } else {
+            dialSide(c, cx, y + RenderGeometry.SIDE_Y * k, sideR, st, pal, fonts)
+        }
     }
 
     /**

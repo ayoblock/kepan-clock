@@ -19,8 +19,8 @@ tasks.withType<Test>().configureEach {
 }
 
 /** 版本号唯一来源：defaultConfig、产物命名、发版文档共用。 */
-val appVersionName = "1.6.6"
-val appVersionCode = 18
+val appVersionName = "1.6.8"
+val appVersionCode = 20
 
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")

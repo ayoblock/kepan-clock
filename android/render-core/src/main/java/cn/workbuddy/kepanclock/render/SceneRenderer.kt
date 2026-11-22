@@ -87,7 +87,12 @@ object SceneRenderer {
         if (lay.portrait) {
             DialRenderer.panelPortrait(c, w, h, lay, eff, pal, fonts)
         } else {
-            DialRenderer.panel(c, px, py0, pw, eff, pal, fonts, k = k, sealPos = lay.sealX to lay.sealY)
+            // 横屏三区：副盘外置左带（等间隔均布见 layoutLandscape）
+            DialRenderer.panel(
+                c, px, py0, pw, eff, pal, fonts, k = k,
+                sealPos = lay.sealX to lay.sealY,
+                sidePos = lay.sideCx to lay.sideCy, sideROver = lay.sideR,
+            )
         }
 
         val popup = eff.popup
@@ -108,8 +113,9 @@ object SceneRenderer {
      *  顶题组（顶部朱框「天行」印＋左右干支竖题沿竖中线对称篆书并列
      *  「丙午年」「己亥日」＋中央节气名篆书竖写居中）、大盘（外金环＋篆书辰字环＋
      *  刻线环＋内盘星宿瓦当＋晷针）、底部读数组（刻读/更点/干支日/竖排历注）；
-     *  横屏沿用桌面 draw_wallpaper 四角构图。全部文字取包内楷体/篆书子集，
-     *  不落系统回退（字体统一）。 */
+     *  横屏按用户示意稿 kepan-wallpaper16（2026-11-23）：三等分带——左八刻
+     *  副盘、中主盘、右信息列，各区域带内水平居中、带距相等。全部文字取包内
+     *  楷体/篆书子集，缺字由系统回退承接。 */
     fun drawWallpaper(
         c: Canvas, w: Double, h: Double, st: SceneState, pal: Palette,
         fonts: Primitives.Fonts, dpr: Double = 1.0,
@@ -268,10 +274,26 @@ object SceneRenderer {
         p.color = Palette.argb(pal["bg"])
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
 
-        val R = 0.36 * minOf(w, h)
-        val cx = w * 0.5
-        val cy = h * 0.48
+        // ---- 三区等间隔（2026-11-23 示意稿 kepan-wallpaper16）：左八刻副盘 /
+        //      中主盘 / 右信息列；复用 layoutLandscape 的等间隔均布几何，
+        //      与 app 横屏主场景完全同位 ----
+        val lay = RenderGeometry.layout(w, h)
+        val cy = h * 0.53
         val night = st.blend > 0.5
+        val gold = Palette.argb(pal["gold"])
+        val cinnabar = Palette.argb(pal["cinnabar"])
+        val faint = Palette.argb(pal["faint"])
+        val chenF = fonts.chen
+        val seal = fonts.seal
+        val sealAlt = fonts.sealAlt
+        val pt = st.parts
+
+        // 左带：八刻副盘（桌面 _dial_side 同款：八刻序字＋刻针一辰一周＋盘心生肖篆字）
+        DialRenderer.dialSide(c, lay.sideCx, cy, lay.sideR, st, pal, fonts)
+
+        // 中带：主盘（静态位图＋星点＋晷针）
+        val R = lay.R
+        val cx = lay.cx
         val cacheable = st.blend == 0.0 || st.blend == 1.0
         val surf = DialRenderer.getStatic(R * dpr, pal, fonts, night, cacheable)
         c.save()
@@ -285,36 +307,66 @@ object SceneRenderer {
         DialRenderer.drawStars(c, cx, cy, R, st.tMin, pal)
         DialRenderer.drawNeedle(c, cx, cy, R, st.tMin, pal, night)
 
-        val ink = Palette.argb(pal["ink"])
-        val faint = Palette.argb(pal["faint"])
-        val chenF = fonts.chen
-        val seal = fonts.seal
-        val sealAlt = fonts.sealAlt
-        val pt = st.parts
-        val size = maxOf(16.0, R * 0.085)
-        val mx = maxOf(28.0, R * 0.16)
-        val my = maxOf(28.0, R * 0.14)
-
-        fun blockBottom(s2: String): Double = h - my - s2.length * size * 1.28 + size * 0.5
-
-        // 四角竖题：左上款识、右上映候、左下日干支、右下年干支
-        val hou = pt?.hou
-        if (!hou.isNullOrEmpty()) {
-            DialRenderer.vtext(c, w - mx, my, hou, size, seal, faint, align = "r")
+        // 右带：信息列（自上而下：篆书时辰读数题＋朱印 → 更牌框 → 节气 →
+        // 日期 → 真太阳时 → 历注 → 天行印 → 干支候名底款），逐元素水平居中
+        val rx = lay.px + lay.pw / 2.0
+        val ts = h * 0.058
+        val ty = h * 0.185
+        // 标题组：小朱印「辰」＋篆书时辰读数，整组按实测宽居中
+        val chipS = ts * 0.82
+        val readW = Primitives.textW(st.read, ts, seal)
+        val groupW = chipS + ts * 0.35 + readW
+        val gx = rx - groupW / 2.0
+        Primitives.fillRoundRect(c, gx, ty - chipS / 2.0, chipS, chipS, chipS * 0.14, cinnabar)
+        Primitives.text(c, gx + chipS / 2.0, ty, "辰", chipS * 0.60, sealAlt, Palette.argb(pal["bg"]))
+        Primitives.text(c, gx + chipS + ts * 0.35 + readW / 2.0, ty, st.read, ts, seal, gold)
+        // 更牌框（金描圆角方，更点居中）
+        val bw = lay.pw                    // 全带宽：三区可视间隔与边距全等（示意稿要求）
+        val bh = h * 0.115
+        val bgy = h * 0.30
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = maxOf(1.5, h * 0.0028).toFloat()
+        p.color = gold
+        c.drawRoundRect(
+            (rx - bw / 2).toFloat(), bgy.toFloat(),
+            (rx + bw / 2).toFloat(), (bgy + bh).toFloat(),
+            (bh * 0.08).toFloat(), (bh * 0.08).toFloat(), p,
+        )
+        Primitives.text(c, rx, bgy + bh / 2.0, st.geng, h * 0.042, chenF, gold)
+        // 节气名 / 日期 / 真太阳时 / 历注
+        Primitives.text(c, rx, h * 0.505, st.term, h * 0.036, chenF, gold)
+        Primitives.text(c, rx, h * 0.565, "${st.dateStr}  ${st.hhmm}", h * 0.024, chenF, faint)
+        Primitives.text(c, rx, h * 0.615, "真太阳时 ${st.tsRead}", h * 0.028, chenF, gold)
+        if (st.note.isNotEmpty()) {
+            var nSize = h * 0.020
+            val nMax = lay.pw * 0.88
+            val nw = Primitives.textW(st.note, nSize, chenF)
+            if (nw > nMax) nSize *= nMax / nw
+            Primitives.text(c, rx, h * 0.665, st.note, nSize, chenF, faint)
         }
-        DialRenderer.vtext(c, mx, my, "刻盘钟", size, seal, faint)
-        val gz = pt?.gz
-        if (!gz.isNullOrEmpty()) {
-            DialRenderer.vtext(c, mx, blockBottom(gz), gz, size, chenF, ink)
-        }
-        val y = pt?.y
-        if (!y.isNullOrEmpty()) {
-            DialRenderer.vtext(c, w - mx, blockBottom(y + "年"), y + "年", size, chenF, ink)
-        }
-
-        // 底部一行：时辰读数 · 更点 · 历注
-        val line = "${st.read} 　·　 ${st.geng} 　·　 ${y ?: ""}年${pt?.lum ?: ""}${gz ?: ""}日"
-        Primitives.text(c, w * 0.5, h - my - size * 0.4, line, size * 0.72, chenF, ink)
+        // 天行印（朱框圆角方＋篆书印文，字号实测收敛不出框）
+        val scy2 = h * 0.755
+        val fs = minOf(lay.pw * 0.24, h * 0.125)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = maxOf(2.0, h * 0.003).toFloat()
+        p.color = cinnabar
+        c.drawRoundRect(
+            (rx - fs / 2).toFloat(), (scy2 - fs / 2).toFloat(),
+            (rx + fs / 2).toFloat(), (scy2 + fs / 2).toFloat(),
+            (fs * 0.10).toFloat(), (fs * 0.10).toFloat(), p,
+        )
+        val probe = fs * 0.5
+        val sealM = Paint()
+        sealM.typeface = seal
+        sealM.textSize = probe.toFloat()
+        val sealSize = RenderGeometry.sealTextSize(probe, fs, sealM.measureText("天行").toDouble())
+        Primitives.text(c, rx, scy2, "天行", sealSize, sealAlt, cinnabar)
+        // 底款：干支年月日 · 候名（faint 小字）
+        val yz = pt?.y ?: ""
+        val gz = pt?.gz ?: ""
+        val lum = pt?.lum ?: ""
+        val hou = pt?.hou ?: ""
+        Primitives.text(c, rx, h * 0.87, "${yz}年${lum}${gz}日 · ${hou}", h * 0.020, chenF, faint)
     }
 
     /** 由 domain ClockState 组装渲染视图状态（app 层便捷入口）。 */
