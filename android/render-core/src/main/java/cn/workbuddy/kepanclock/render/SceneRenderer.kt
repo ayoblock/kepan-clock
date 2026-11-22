@@ -252,7 +252,9 @@ object SceneRenderer {
             if (top + hou.length * size * 1.30 > bottom) {
                 size = (bottom - top) / (hou.length * 1.30)
             }
-            DialRenderer.vtext(c, cx, top, hou, size, chenF, gold)
+            // align="c"：vtext 默认 "l"（左对齐）会把整列推到中线右半字宽
+            // （2026-11-23 像素实测：720px 画布偏右 17px），候名须逐字居中
+            DialRenderer.vtext(c, cx, top, hou, size, chenF, gold, align = "c")
         }
     }
 
