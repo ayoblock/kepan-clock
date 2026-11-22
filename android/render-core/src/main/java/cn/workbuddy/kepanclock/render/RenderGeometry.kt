@@ -33,6 +33,9 @@ object RenderGeometry {
     const val POP_W = 320.0
     const val POP_H3 = 168.0
 
+    /** 横屏右面板相对主盘的缩小比例（2026-11-23 v1.6.9：主盘主导，面板为陪衬）。 */
+    private const val PANEL_K = 0.75
+
     val SET_WM = arrayOf(
         "zodiac" to "生肖", "feitian" to "飞天", "beast" to "神兽",
         "chen" to "辰字", "none" to "无",
@@ -116,48 +119,27 @@ object RenderGeometry {
         )
     }
 
-    /** 横屏三区（2026-11-23 示意稿 kepan-wallpaper16）：左八刻副盘、中主盘、
-     *  右面板。尺寸按高度取（副盘 r=0.21h、主盘 R≤0.395h、面板设计宽 300k），
-     *  再以等间隔 g 均布整组（含左右边距，共 4 个等距 g）并整体居中——
-     *  三个区域各自水平居中于其槽位，相邻间隔与边距全部相等。 */
+    /** 横屏（2026-11-23 用户反馈 v1.6.9）：主盘主导——主盘放大（≤0.45h）锚定
+     *  屏幕正中（cx=w/2、cy=h/2），副盘居左余位中央，右面板按主盘比例
+     *  PANEL_K=0.75 缩小为陪衬；主盘↔面板间距＝右缘边距（gR=(w-cx-R-pw)/2）。
+     *  弹层/设置随 k 缩。空间不足时整体等比收缩（k 同步缩保持面板不出框）。 */
     private fun layoutLandscape(w: Double, h: Double): Layout {
-        val rS = h * 0.21
-        val R = max(60.0, min(h * 0.395, (h - 72.0) / 2.0))
-        val k = max(0.78, min((h - 40.0) / 400.0, 2.2))
-        val pw = 300.0 * k
-        val total = 2.0 * rS + 2.0 * R + pw
-        // 空间不足（4×24dp 最小间隔放不下）时整体等比收缩，k 同步缩保持面板不出框
-        if (total + 96.0 > w) {
-            val s = (w - 96.0) / total
-            val k2 = max(0.55, k * s)
-            return layoutShrunk(w, h, rS * s, R * s, 300.0 * k2, k2)
-        }
-        val gap = (w - total) / 4.0
-        val sideCx = gap + rS
-        val cx = 2.0 * gap + 2.0 * rS + R
-        val px = 3.0 * gap + 2.0 * rS + 2.0 * R
-        val cy = h * 0.53
-        val py0 = max(12.0, (h - 400.0 * k) / 2.0)
-        val ny = py0 + NOTE_Y * k
-        val scx = px + pw / 2.0
-        val scy = py0 + (SEAL_Y + 25.0) * k
-        return Layout(
-            R = R, pw = pw, k = k, cx = cx, cy = cy, px = px, py0 = py0, noteY = ny,
-            sealX = scx, sealY = scy,
-            noteRect = doubleArrayOf(px + 4.0 * k, ny - 12.0 * k, pw - 8.0 * k, 24.0 * k),
-            anchorX = scx, anchorY = ny + 12.0 * k,
-            sideCx = sideCx, sideCy = cy, sideR = rS,
-        )
+        val R0 = max(60.0, min(h * 0.45, (h - 44.0) / 2.0))
+        val rS0 = h * 0.18
+        val k0 = max(0.62, min((h - 40.0) / 400.0, 2.2) * PANEL_K)
+        val cap = w / 2.0 - 40.0
+        val s = minOf(1.0, cap / (R0 + 2.0 * rS0), cap / (R0 + 300.0 * k0))
+        val k = max(0.55, k0 * s)
+        return landscapePlace(w, h, R0 * s, rS0 * s, 300.0 * k, k)
     }
 
-    /** layoutLandscape 收缩路径：k 已随等比因子缩定，按收缩后参数直接布位。 */
-    private fun layoutShrunk(w: Double, h: Double, rS: Double, R: Double, pw: Double, k: Double): Layout {
-        val total = 2.0 * rS + 2.0 * R + pw
-        val gap = (w - total) / 4.0
-        val sideCx = gap + rS
-        val cx = 2.0 * gap + 2.0 * rS + R
-        val px = 3.0 * gap + 2.0 * rS + 2.0 * R
-        val cy = h * 0.53
+    /** 横屏布位（layoutLandscape 与收缩路径共用）：主盘正中、副盘居左余位
+     *  中央、面板居右，主盘↔面板间距与右缘边距相等。 */
+    private fun landscapePlace(w: Double, h: Double, R: Double, rS: Double, pw: Double, k: Double): Layout {
+        val cx = w / 2.0
+        val cy = h * 0.5
+        val sideCx = (cx - R) / 2.0
+        val px = cx + R + max(20.0, (w - cx - R - pw) / 2.0)
         val py0 = max(12.0, (h - 400.0 * k) / 2.0)
         val ny = py0 + NOTE_Y * k
         val scx = px + pw / 2.0
@@ -340,8 +322,9 @@ object RenderGeometry {
             return "seal"
         }
         // 气泡命中须先于历注行：竖屏布局气泡在历注行上方展开，底栏「展全月/收」
-        // 恰与历注命中框重叠（桌面横向布局气泡在历注下方无重叠，故桌面先判 note）
-        if (popupKind != null) {
+        // 恰与历注命中框重叠（桌面横向布局气泡在历注下方无重叠，故桌面先判 note）。
+        // 设置展开时不复用历注气泡几何（两者互斥展示，设置牌窗为独立浮卡）
+        if (popupKind != null && popupKind != "settings") {
             val g = popupGeom(w, h, lay, popupKind == "month", monthRows)
             if (g.x <= x && x <= g.x + g.bw && g.y <= y && y <= g.y + g.bh) {
                 if (y >= g.y + g.bh - 28.0 * g.k) return "footer"

@@ -274,11 +274,10 @@ object SceneRenderer {
         p.color = Palette.argb(pal["bg"])
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
 
-        // ---- 三区等间隔（2026-11-23 示意稿 kepan-wallpaper16）：左八刻副盘 /
-        //      中主盘 / 右信息列；复用 layoutLandscape 的等间隔均布几何，
-        //      与 app 横屏主场景完全同位 ----
+        // ---- 三区（2026-11-23 v1.6.9 主盘主导）：左八刻副盘 / 中主盘（正中）/
+        //      右信息列；复用 layout() 几何，与 app 横屏主场景完全同位 ----
         val lay = RenderGeometry.layout(w, h)
-        val cy = h * 0.53
+        val cy = lay.cy
         val night = st.blend > 0.5
         val gold = Palette.argb(pal["gold"])
         val cinnabar = Palette.argb(pal["cinnabar"])

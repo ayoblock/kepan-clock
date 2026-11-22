@@ -38,47 +38,70 @@ class RenderGeometryTest {
 
     @Test
     fun `layout 结构性断言`() {
-        // 2026-11-23 横屏三区等间隔（示意稿 kepan-wallpaper16）：尺寸按高度取；
-        // 1024×640 空间不足触发收缩路径（s=(w-96)/total，k 随缩）
-        // rS=0.21h、R=min(0.395h,(h-72)/2)、k=min((h-40)/400,2.2)、pw=300k
-        val rS0 = 640.0 * 0.21
-        val R0 = 640.0 * 0.395
-        val k0 = (640.0 - 40.0) / 400.0
-        val s = (1024.0 - 96.0) / (2.0 * rS0 + 2.0 * R0 + 300.0 * k0)
-        val k = k0 * s
-        val rS = rS0 * s
-        val R = R0 * s
-        val pw = 300.0 * k
-        val lay = RenderGeometry.layout(1024.0, 640.0)
-        assertEquals(R, lay.R, 1e-9)
-        assertEquals(pw, lay.pw, 1e-9)
-        assertEquals(k, lay.k, 1e-9)
-        assertFalse(lay.portrait)
-        // 等间隔：左缘 / 副盘→主盘 / 主盘→面板 / 右缘 四距全等
-        val gap = (1024.0 - (2.0 * rS + 2.0 * R + pw)) / 4.0
-        assertEquals(gap, lay.sideCx - lay.sideR, 1e-9)
-        assertEquals(gap, lay.cx - lay.R - (lay.sideCx + lay.sideR), 1e-9)
-        assertEquals(gap, lay.px - (lay.cx + lay.R), 1e-9)
-        assertEquals(gap, 1024.0 - (lay.px + lay.pw), 1e-9)
-        // 副盘与主盘同水平线（0.53h），面板锚点即历注行下缘中心
-        assertEquals(640.0 * 0.53, lay.sideCy, 1e-9)
-        assertEquals(640.0 * 0.53, lay.cy, 1e-9)
-        assertEquals(lay.px + lay.pw / 2.0, lay.anchorX, 1e-9)
-        assertEquals(lay.py0 + RenderGeometry.NOTE_Y * lay.k + 12.0 * lay.k, lay.anchorY, 1e-9)
+        // 2026-11-23 v1.6.9 主盘主导：R=min(0.45h,(h-44)/2)、cx=w/2、cy=h/2、
+        // 副盘 r=0.18h 居左余位中央、面板比例 PANEL_K=0.75、pw=300k；
+        // 主盘↔面板间距＝右缘边距。1024×640 触发收缩路径（s=min(1,(w/2-40)/(R0+2rS0),(w/2-40)/(R0+300k0))）
+        // ---- 1600×720：常规路径 ----
+        val wL = 1600.0
+        val hL = 720.0
+        val R0 = minOf(hL * 0.45, (hL - 44.0) / 2.0)
+        val rS0 = hL * 0.18
+        val kL = maxOf(0.62, minOf((hL - 40.0) / 400.0, 2.2) * 0.75)
+        val capL = wL / 2.0 - 40.0
+        assertEquals(1.0, minOf(1.0, capL / (R0 + 2.0 * rS0), capL / (R0 + 300.0 * kL)), 1e-9) // 不收缩
+        val layL = RenderGeometry.layout(wL, hL)
+        assertEquals(R0, layL.R, 1e-9)
+        assertEquals(300.0 * kL, layL.pw, 1e-9)
+        assertEquals(kL, layL.k, 1e-9)
+        assertFalse(layL.portrait)
+        // 主盘锚定屏幕正中
+        assertEquals(wL / 2.0, layL.cx, 1e-9)
+        assertEquals(hL / 2.0, layL.cy, 1e-9)
+        assertEquals(hL / 2.0, layL.sideCy, 1e-9)
+        // 副盘居左余位中央；主盘↔面板间距＝右缘边距
+        assertEquals((layL.cx - layL.R) / 2.0, layL.sideCx, 1e-9)
+        val gR = (wL - wL / 2.0 - layL.R - layL.pw) / 2.0
+        assertEquals(gR, layL.px - (layL.cx + layL.R), 1e-9)
+        assertEquals(gR, wL - (layL.px + layL.pw), 1e-9)
+        assertTrue(gR >= 20.0)
+        // 面板锚点即历注行下缘中心
+        assertEquals(layL.px + layL.pw / 2.0, layL.anchorX, 1e-9)
+        assertEquals(layL.py0 + RenderGeometry.NOTE_Y * layL.k + 12.0 * layL.k, layL.anchorY, 1e-9)
+        // ---- 1024×640：收缩路径（等比缩、k 同步缩） ----
+        val wS = 1024.0
+        val hS = 640.0
+        val R0s = minOf(hS * 0.45, (hS - 44.0) / 2.0)
+        val rS0s = hS * 0.18
+        val k0s = maxOf(0.62, minOf((hS - 40.0) / 400.0, 2.2) * 0.75)
+        val capS = wS / 2.0 - 40.0
+        val s = minOf(1.0, capS / (R0s + 2.0 * rS0s), capS / (R0s + 300.0 * k0s))
+        assertTrue(s < 1.0)
+        val kS = maxOf(0.55, k0s * s)
+        val layS = RenderGeometry.layout(wS, hS)
+        assertEquals(R0s * s, layS.R, 1e-9)
+        assertEquals(300.0 * kS, layS.pw, 1e-9)
+        assertEquals(kS, layS.k, 1e-9)
+        assertEquals(wS / 2.0, layS.cx, 1e-9)
+        assertEquals((layS.cx - layS.R) / 2.0, layS.sideCx, 1e-9)
+        val gS = (wS - wS / 2.0 - layS.R - layS.pw) / 2.0
+        assertEquals(gS, layS.px - (layS.cx + layS.R), 1e-9)
+        assertEquals(gS, wS - (layS.px + layS.pw), 1e-9)
+        assertTrue(gS >= 20.0 - 1e-9)
     }
 
     @Test
     fun `popupGeom 四向避让`() {
-        // 真机横屏 1600×720：面板锚点低位，三日气泡向上弹（down 超窗下缘）；
-        // bw = max(POP_W*k, pw*1.14)（桌面同式）
+        // 真机横屏 1600×720（v1.6.9 主盘主导几何）：面板锚点中位，三日气泡
+        // 向下弹（窗口余量足够）；bw = max(POP_W*k, pw*1.14)（桌面同式）
         val layL = RenderGeometry.layout(1600.0, 720.0)
         val g3 = RenderGeometry.popupGeom(1600.0, 720.0, layL, isMonth = false, monthRows = 6)
-        assertEquals("up", g3.side)
+        assertEquals("down", g3.side)
         assertEquals(maxOf(RenderGeometry.POP_W * layL.k, layL.pw * 1.14), g3.bw, 1e-9)
         assertEquals(RenderGeometry.POP_H3 * layL.k, g3.bh, 1e-9)
-        // 整月历更高（6 行：56+180+44=280*k）
+        // 整月历更高（6 行：56+180+44=280*k）→ 下弹越窗，改上弹
         val gm = RenderGeometry.popupGeom(1600.0, 720.0, layL, isMonth = true, monthRows = 6)
         assertEquals((56.0 + 30.0 * 6 + 44.0) * layL.k, gm.bh, 1e-9)
+        assertEquals("up", gm.side)
         // 极窄窗：四向皆不容 → 钳制于窗内且不越界
         val gs = RenderGeometry.popupGeom(300.0, 200.0, RenderGeometry.layout(300.0, 200.0), isMonth = true, monthRows = 6)
         assertTrue(gs.x >= 8.0 && gs.x + gs.bw <= 300.0 - 8.0 + 1e-9)
@@ -118,8 +141,8 @@ class RenderGeometryTest {
             "settings",
             RenderGeometry.hitTest(w, h, sg0.x + sg0.bw - 4.0, sg0.y + sg0.bh - 6.0, "settings", 6),
         )
-        // 设置牌窗展开时点印位：新横屏几何下印位在牌窗与气泡几何之外 → null
-        //（桌面同点位语义为「落入三日气泡」，横屏面板低位后气泡上弹不再覆盖印位）
+        // 设置牌窗展开时点印位 → null（v1.6.9：设置展开不再复用历注气泡几何，
+        // 印位也不在新牌窗内；点盘面空白走 else 分支收牌窗）
         assertNull(RenderGeometry.hitTest(w, h, lay.sealX, lay.sealY, "settings", 6))
         // 设置牌窗内 chip 命中 → set:theme:day
         val sg = RenderGeometry.settingsGeom(w, h)

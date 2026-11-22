@@ -9,12 +9,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import cn.workbuddy.kepanclock.render.RenderGeometry
 import cn.workbuddy.kepanclock.settings.ConfigRepository
 import cn.workbuddy.kepanclock.settings.KepanConfig
 import cn.workbuddy.kepanclock.settings.SettingsSheet
 import cn.workbuddy.kepanclock.strike.StrikeScheduler
+import kotlin.math.min
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -23,13 +27,14 @@ import kotlinx.coroutines.launch
  * 主界面容器（§9-3 拍板结构）：
  * FrameLayout 内两个**平级**子 View——
  *   1) ClockView：原生自定义 View，占满全屏（盘面，严禁放进 AndroidView）
- *   2) ComposeView：仅承载设置牌窗，底部浮层，不承载盘面
+ *   2) ComposeView：仅承载设置牌窗，弹出框式浮卡（placeSettingsSheet 定位），不承载盘面
  * 「天行」字印开合设置页；点盘面其他区域收起（桌面点击盘外收气泡的同款语义）。
  */
 class ClockActivity : ComponentActivity() {
 
     private lateinit var repo: ConfigRepository
     private lateinit var clockView: ClockView
+    private lateinit var settingsView: ComposeView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,19 +46,19 @@ class ClockActivity : ComponentActivity() {
             }
         }
 
-        val settingsView = ComposeView(this).apply {
+        settingsView = ComposeView(this).apply {
             id = View.generateViewId()
             layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ).apply { setMargins(0, 0, 0, 24) }
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
             visibility = View.GONE
         }
 
         clockView = ClockView(this, repository = repo)
         clockView.listener = object : ClockView.Listener {
             override fun onSealToggle() {
+                placeSettingsSheet()    // 展开前按当前几何定位（弹出框式浮卡）
                 settingsView.visibility =
                     if (settingsView.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             }
@@ -90,10 +95,15 @@ class ClockActivity : ComponentActivity() {
         }
         settingsView.setContent {
             val cfg = cfgState.value
-            // 设置牌窗跟随盘面生效昼夜（blend≥0.5 视夜）；cfg 变更即重组刷新
+            // 设置牌窗跟随盘面生效昼夜（blend≥0.5 视夜）；cfg 变更即重组刷新。
+            // 高度上限随方向（横屏 0.86h / 竖屏 0.62h），超出内滚——不占满屏幕
+            val conf = androidx.compose.ui.platform.LocalConfiguration.current
+            val landscape = conf.screenWidthDp > conf.screenHeightDp
+            val maxH = ((if (landscape) conf.screenHeightDp * 0.86 else conf.screenHeightDp * 0.62)).dp
             SettingsSheet(
                 cfg = cfg,
                 night = clockView.effectiveNight,
+                modifier = androidx.compose.ui.Modifier.heightIn(max = maxH),
                 onTheme = { v -> lifecycleScope.launch { repo.setTheme(v) } },
                 onWatermark = { v -> lifecycleScope.launch { repo.setWatermark(v) } },
                 onAlpha = { v -> lifecycleScope.launch { repo.setWmAlpha(v) } },
@@ -114,6 +124,41 @@ class ClockActivity : ComponentActivity() {
                 },
             )
         }
+    }
+
+    /**
+     * 设置浮卡定位（2026-11-23 v1.6.9：与历注弹出框同款的浮卡，不再满宽底板）。
+     * 横屏：覆于右面板位（面板中心横向居中、垂直居中＝屏心＝面板中心），
+     * 主盘保持可见；竖屏：底部居中悬浮（底距 20dp）。
+     * 宽度横屏 min(300dp, w−24) / 竖屏 min(320dp, w−24)；高度自内容，
+     * 上限在 Compose 侧 heightIn（横屏 0.86h / 竖屏 0.62h），超出内滚。
+     */
+    private fun placeSettingsSheet() {
+        val dm = clockView.resources.displayMetrics
+        val density = dm.density.toDouble()
+        val wDp = clockView.width / density
+        val hDp = clockView.height / density
+        if (wDp <= 0.0 || hDp <= 0.0) return
+        val landscape = wDp > hDp
+        val cardW = min(if (landscape) 300.0 else 320.0, wDp - 24.0)
+        val lp = settingsView.layoutParams as FrameLayout.LayoutParams
+        lp.width = (cardW * density).toInt()
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        if (landscape) {
+            val lay = RenderGeometry.layout(wDp, hDp)
+            val pcx = lay.px + lay.pw / 2.0
+            lp.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            lp.leftMargin =
+                ((pcx - cardW / 2.0).coerceIn(8.0, wDp - cardW - 8.0) * density).toInt()
+            lp.topMargin = 0
+            lp.bottomMargin = 0
+        } else {
+            lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            lp.bottomMargin = (20.0 * density).toInt()
+            lp.leftMargin = 0
+            lp.topMargin = 0
+        }
+        settingsView.layoutParams = lp
     }
 
     /** 状态栏（通知栏）随盘面昼夜主题：底色取 Palette.bg，图标浅/深反转。 */
